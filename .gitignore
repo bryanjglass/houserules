@@ -6,3 +6,4 @@ server/prisma/dev.db-journal
 server/.env
 client/dist/
 .DS_Store
+/.idea/
