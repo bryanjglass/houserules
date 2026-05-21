@@ -17,6 +17,12 @@ export default function NavBar() {
           🏠 House Rules
         </Link>
         <div className="flex items-center gap-3">
+          <Link
+            to="/calendar"
+            className="text-white/90 text-sm font-medium hover:text-white transition"
+          >
+            📅 Calendar
+          </Link>
           {user?.role === 'PARENT' && (
             <Link
               to="/tasks/new"

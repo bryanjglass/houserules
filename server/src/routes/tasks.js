@@ -40,6 +40,23 @@ function nextDueDate(currentDue, recurrence, weeklyDays) {
   return base;
 }
 
+// Project future occurrences of a recurring task within [start, end].
+// Walks forward from the task's due date using the same recurrence rules as
+// instance spawning. The due date itself is the materialized instance and is
+// NOT emitted here. Bounded to guard against runaway daily expansion.
+function projectOccurrences(task, start, end) {
+  if (!task.isRecurring || !task.recurrence || !task.dueDate) return [];
+  const occurrences = [];
+  let cursor = new Date(task.dueDate);
+  const MAX_STEPS = 400;
+  for (let i = 0; i < MAX_STEPS; i++) {
+    cursor = nextDueDate(cursor, task.recurrence, task.weeklyDays);
+    if (cursor > end) break;
+    if (cursor >= start) occurrences.push(new Date(cursor));
+  }
+  return occurrences;
+}
+
 // GET /api/tasks
 // Parent: all tasks for their children
 // Child: their own tasks
@@ -62,6 +79,74 @@ router.get('/', async (req, res) => {
     orderBy: { createdAt: 'desc' },
   });
   res.json(tasks);
+});
+
+// GET /api/tasks/calendar?start=&end=
+// Returns role-scoped tasks with a due date in [start, end], plus projected
+// future occurrences of recurring tasks across the same window.
+router.get('/calendar', async (req, res) => {
+  const { user } = req;
+  const { start, end } = req.query;
+
+  const startDate = start ? new Date(start) : null;
+  const endDate = end ? new Date(end) : null;
+  if (!startDate || !endDate || isNaN(startDate) || isNaN(endDate)) {
+    return res.status(400).json({ error: 'start and end query params are required and must be valid dates' });
+  }
+  if (startDate > endDate) {
+    return res.status(400).json({ error: 'start must not be after end' });
+  }
+
+  const isParent = user.role === 'PARENT';
+  let where;
+  if (isParent) {
+    const children = await prisma.user.findMany({ where: { parentId: user.id }, select: { id: true } });
+    where = { assignedToId: { in: children.map(c => c.id) } };
+  } else {
+    where = { assignedToId: user.id };
+  }
+
+  const tasks = await prisma.task.findMany({
+    where,
+    include: isParent ? { assignedTo: { select: { id: true, name: true } } } : undefined,
+  });
+
+  const events = [];
+  for (const task of tasks) {
+    const base = {
+      taskId: task.id,
+      title: task.title,
+      status: task.status,
+      dollarAmount: task.dollarAmount,
+      isRecurring: task.isRecurring,
+      recurrence: task.recurrence,
+      ...(isParent && { assignedTo: task.assignedTo }),
+    };
+
+    // Materialized instance, if it falls in range
+    if (task.dueDate) {
+      const due = new Date(task.dueDate);
+      if (due >= startDate && due <= endDate) {
+        events.push({ ...base, id: task.id, date: due.toISOString(), projected: false });
+      }
+    }
+
+    // Project future occurrences only from the active tip of a recurring chain.
+    // Approved instances already spawned their successor, so projecting from
+    // them would duplicate the chain.
+    if (task.isRecurring && task.status !== 'APPROVED') {
+      for (const date of projectOccurrences(task, startDate, endDate)) {
+        events.push({
+          ...base,
+          id: `${task.id}-proj-${date.toISOString()}`,
+          date: date.toISOString(),
+          projected: true,
+        });
+      }
+    }
+  }
+
+  res.json(events);
 });
 
 // POST /api/tasks — parent creates task
