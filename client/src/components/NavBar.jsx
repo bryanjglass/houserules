@@ -31,6 +31,14 @@ export default function NavBar() {
               + New Task
             </Link>
           )}
+          {user?.role === 'PARENT' && (
+            <Link
+              to="/settings"
+              className="text-white/90 text-sm font-medium hover:text-white transition"
+            >
+              ⚙️ Settings
+            </Link>
+          )}
           <span className="text-sm opacity-80">{user?.name}</span>
           <button
             onClick={handleLogout}

@@ -18,6 +18,12 @@ export function AuthProvider({ children }) {
     return r.data;
   };
 
+  const deviceLogin = async (childId) => {
+    const r = await api.post('/auth/device-login', { childId });
+    setUser(r.data);
+    return r.data;
+  };
+
   const register = async (data) => {
     const r = await api.post('/auth/register', data);
     setUser(r.data);
@@ -30,7 +36,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout }}>
+    <AuthContext.Provider value={{ user, login, deviceLogin, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

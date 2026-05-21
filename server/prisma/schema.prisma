@@ -8,21 +8,44 @@ datasource db {
 }
 
 // role: "PARENT" | "CHILD"
+// householdCode: random per-parent code that gates the public child lookup (parents only)
+// pinHash: bcrypt hash of a child's 4-digit PIN (children only)
+// pinFailedAttempts / pinLockedUntil: per-child PIN lockout state
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String?  @unique
-  pin          String?
-  passwordHash String?
-  role         String   @default("CHILD")
-  parentId     String?
-  parent       User?    @relation("Family", fields: [parentId], references: [id])
-  children     User[]   @relation("Family")
-  createdAt    DateTime @default(now())
+  id                String    @id @default(cuid())
+  name              String
+  email             String?   @unique
+  householdCode     String?   @unique
+  pinHash           String?
+  pinFailedAttempts Int       @default(0)
+  pinLockedUntil    DateTime?
+  passwordHash      String?
+  role              String    @default("CHILD")
+  parentId          String?
+  parent            User?     @relation("Family", fields: [parentId], references: [id])
+  children          User[]    @relation("Family")
+  createdAt         DateTime  @default(now())
 
-  assignedTasks Task[]        @relation("AssignedTo")
-  createdTasks  Task[]        @relation("CreatedBy")
-  transactions  Transaction[]
+  assignedTasks  Task[]          @relation("AssignedTo")
+  createdTasks   Task[]          @relation("CreatedBy")
+  transactions   Transaction[]
+  trustedDevices TrustedDevice[] @relation("HouseholdDevices")
+  rememberedOn   TrustedDevice[] @relation("RememberedChildren")
+}
+
+// A physical device a household has chosen to trust for passwordless child re-login.
+// tokenHash: bcrypt hash of the opaque device token stored in the client cookie.
+// children: the children who have opted to be remembered (one-tap login) on this device.
+model TrustedDevice {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  parentId   String
+  parent     User     @relation("HouseholdDevices", fields: [parentId], references: [id])
+  label      String?
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+  children   User[]   @relation("RememberedChildren")
 }
 
 // status: "PENDING" | "COMPLETED" | "APPROVED" | "REJECTED"
