@@ -8,11 +8,33 @@ const prisma = new PrismaClient();
 
 router.use(requireAuth);
 
-function nextDueDate(currentDue, recurrence) {
+function parseWeeklyDays(weeklyDays) {
+  if (!weeklyDays) return [];
+  return [...new Set(
+    String(weeklyDays)
+      .split(',')
+      .map(d => parseInt(d, 10))
+      .filter(d => Number.isInteger(d) && d >= 0 && d <= 6)
+  )].sort((a, b) => a - b);
+}
+
+function nextDueDate(currentDue, recurrence, weeklyDays) {
   const base = currentDue ? new Date(currentDue) : new Date();
   switch (recurrence) {
     case 'DAILY':   base.setDate(base.getDate() + 1); break;
-    case 'WEEKLY':  base.setDate(base.getDate() + 7); break;
+    case 'WEEKLY': {
+      const days = parseWeeklyDays(weeklyDays);
+      if (days.length === 0) {
+        base.setDate(base.getDate() + 7);
+        break;
+      }
+      const daySet = new Set(days);
+      for (let i = 1; i <= 7; i++) {
+        base.setDate(base.getDate() + 1);
+        if (daySet.has(base.getDay())) break;
+      }
+      break;
+    }
     case 'MONTHLY': base.setMonth(base.getMonth() + 1); break;
   }
   return base;
@@ -44,11 +66,14 @@ router.get('/', async (req, res) => {
 
 // POST /api/tasks — parent creates task
 router.post('/', requireRole('PARENT'), async (req, res) => {
-  const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence } = req.body;
+  const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence, weeklyDays } = req.body;
   if (!title || !assignedToId) return res.status(400).json({ error: 'title and assignedToId required' });
 
   const child = await prisma.user.findUnique({ where: { id: assignedToId } });
   if (!child || child.parentId !== req.user.id) return res.status(403).json({ error: 'Cannot assign to this child' });
+
+  const normalizedWeeklyDays =
+    isRecurring && recurrence === 'WEEKLY' ? parseWeeklyDays(Array.isArray(weeklyDays) ? weeklyDays.join(',') : weeklyDays) : [];
 
   const task = await prisma.task.create({
     data: {
@@ -60,6 +85,7 @@ router.post('/', requireRole('PARENT'), async (req, res) => {
       dueDate: dueDate ? new Date(dueDate) : null,
       isRecurring: Boolean(isRecurring),
       recurrence: isRecurring ? recurrence : null,
+      weeklyDays: normalizedWeeklyDays.length ? normalizedWeeklyDays.join(',') : null,
     },
   });
   res.status(201).json(task);
@@ -139,9 +165,10 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
           dollarAmount: task.dollarAmount,
           assignedToId: task.assignedToId,
           createdById: req.user.id,
-          dueDate: nextDueDate(task.dueDate, task.recurrence),
+          dueDate: nextDueDate(task.dueDate, task.recurrence, task.weeklyDays),
           isRecurring: true,
           recurrence: task.recurrence,
+          weeklyDays: task.weeklyDays,
           templateId,
         },
       });

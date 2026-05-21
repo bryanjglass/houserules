@@ -27,6 +27,7 @@ model User {
 
 // status: "PENDING" | "COMPLETED" | "APPROVED" | "REJECTED"
 // recurrence: "DAILY" | "WEEKLY" | "MONTHLY"
+// weeklyDays: comma-separated day numbers 0-6 (0=Sun..6=Sat) for WEEKLY tasks; null/empty = every 7 days
 model Task {
   id           String   @id @default(cuid())
   title        String
@@ -45,6 +46,7 @@ model Task {
 
   isRecurring Boolean @default(false)
   recurrence  String?
+  weeklyDays  String?
   templateId  String?
   template    Task?   @relation("Instances", fields: [templateId], references: [id])
   instances   Task[]  @relation("Instances")
