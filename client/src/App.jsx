@@ -6,6 +6,7 @@ import ChildDetail from './pages/parent/ChildDetail.jsx';
 import TaskManager from './pages/parent/TaskManager.jsx';
 import ChildDashboard from './pages/child/Dashboard.jsx';
 import ChildAllowance from './pages/child/Allowance.jsx';
+import Calendar from './pages/Calendar.jsx';
 
 function AppRoutes() {
   const { user } = useAuth();
@@ -34,6 +35,7 @@ function AppRoutes() {
         <Route path="/children/:childId" element={<ChildDetail />} />
         <Route path="/tasks/new" element={<TaskManager />} />
         <Route path="/tasks/:taskId/edit" element={<TaskManager />} />
+        <Route path="/calendar" element={<Calendar />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
@@ -43,6 +45,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<ChildDashboard />} />
       <Route path="/allowance" element={<ChildAllowance />} />
+      <Route path="/calendar" element={<Calendar />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

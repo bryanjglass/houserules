@@ -71,6 +71,13 @@ export default function ChildAllowance() {
           <span className="text-xs font-medium mt-0.5">Chores</span>
         </Link>
         <Link
+          to="/calendar"
+          className="flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-indigo-600 transition"
+        >
+          <span className="text-xl">📅</span>
+          <span className="text-xs font-medium mt-0.5">Calendar</span>
+        </Link>
+        <Link
           to="/allowance"
           className="flex-1 flex flex-col items-center py-3 text-emerald-600"
         >
