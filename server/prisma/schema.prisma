@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// role: "PARENT" | "CHILD"
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String?  @unique
+  pin          String?
+  passwordHash String?
+  role         String   @default("CHILD")
+  parentId     String?
+  parent       User?    @relation("Family", fields: [parentId], references: [id])
+  children     User[]   @relation("Family")
+  createdAt    DateTime @default(now())
+
+  assignedTasks Task[]        @relation("AssignedTo")
+  createdTasks  Task[]        @relation("CreatedBy")
+  transactions  Transaction[]
+}
+
+// status: "PENDING" | "COMPLETED" | "APPROVED" | "REJECTED"
+// recurrence: "DAILY" | "WEEKLY" | "MONTHLY"
+model Task {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  dollarAmount Float?
+  status       String   @default("PENDING")
+
+  assignedToId String
+  assignedTo   User   @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdById  String
+  createdBy    User   @relation("CreatedBy", fields: [createdById], references: [id])
+
+  dueDate     DateTime?
+  completedAt DateTime?
+  approvedAt  DateTime?
+
+  isRecurring Boolean @default(false)
+  recurrence  String?
+  templateId  String?
+  template    Task?   @relation("Instances", fields: [templateId], references: [id])
+  instances   Task[]  @relation("Instances")
+
+  createdAt   DateTime     @default(now())
+  transaction Transaction?
+}
+
+// type: "EARNED" | "ADJUSTMENT"
+model Transaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  taskId    String?  @unique
+  task      Task?    @relation(fields: [taskId], references: [id])
+  amount    Float
+  type      String
+  note      String?
+  createdAt DateTime @default(now())
+}
