@@ -9,6 +9,16 @@ const RECURRENCE_OPTIONS = [
   { value: 'MONTHLY', label: 'Every month' },
 ];
 
+const WEEKDAYS = [
+  { value: 0, label: 'Sun' },
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+];
+
 export default function TaskManager() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -22,6 +32,7 @@ export default function TaskManager() {
   const [dueDate, setDueDate] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrence, setRecurrence] = useState('WEEKLY');
+  const [weeklyDays, setWeeklyDays] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +42,15 @@ export default function TaskManager() {
       if (!preselectedChildId && r.data.length === 1) setAssignedToId(r.data[0].id);
     });
   }, [preselectedChildId]);
+
+  const selectRecurrence = (value) => {
+    setRecurrence(value);
+    if (value !== 'WEEKLY') setWeeklyDays([]);
+  };
+
+  const toggleWeekday = (day) => {
+    setWeeklyDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,6 +66,7 @@ export default function TaskManager() {
         dueDate: dueDate || undefined,
         isRecurring,
         recurrence: isRecurring ? recurrence : undefined,
+        weeklyDays: isRecurring && recurrence === 'WEEKLY' && weeklyDays.length ? weeklyDays : undefined,
       });
       navigate(assignedToId ? `/children/${assignedToId}` : '/');
     } catch (err) {
@@ -158,7 +179,7 @@ export default function TaskManager() {
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setRecurrence(opt.value)}
+                  onClick={() => selectRecurrence(opt.value)}
                   className={`py-2 rounded-lg text-sm font-medium border-2 transition ${
                     recurrence === opt.value
                       ? 'border-purple-500 bg-purple-50 text-purple-700'
@@ -168,6 +189,29 @@ export default function TaskManager() {
                   {opt.label}
                 </button>
               ))}
+            </div>
+          )}
+
+          {isRecurring && recurrence === 'WEEKLY' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">On these days (optional)</label>
+              <div className="grid grid-cols-7 gap-1">
+                {WEEKDAYS.map(day => (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleWeekday(day.value)}
+                    className={`py-2 rounded-lg text-xs font-medium border-2 transition ${
+                      weeklyDays.includes(day.value)
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-200 text-gray-600 hover:border-purple-300'
+                    }`}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Leave empty to repeat every 7 days.</p>
             </div>
           )}
 
