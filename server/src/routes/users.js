@@ -1,17 +1,28 @@
 import { Router } from 'express';
+import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { generateHouseholdCode } from '../lib/codes.js';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// Public: look up children by parent email (for child login screen, returns only id+name)
+async function uniqueHouseholdCode() {
+  for (let i = 0; i < 8; i++) {
+    const code = generateHouseholdCode();
+    const exists = await prisma.user.findUnique({ where: { householdCode: code } });
+    if (!exists) return code;
+  }
+  throw new Error('Could not generate a unique household code');
+}
+
+// Public: look up children by household code (for child login screen, returns only id+name)
 router.get('/children-public', async (req, res) => {
-  const { parentEmail } = req.query;
-  if (!parentEmail) return res.status(400).json({ error: 'parentEmail required' });
-  const parent = await prisma.user.findUnique({ where: { email: parentEmail } });
-  if (!parent || parent.role !== 'PARENT') return res.status(404).json({ error: 'Parent not found' });
+  const { householdCode } = req.query;
+  if (!householdCode) return res.status(400).json({ error: 'Household code required' });
+  const parent = await prisma.user.findUnique({ where: { householdCode } });
+  if (!parent || parent.role !== 'PARENT') return res.status(404).json({ error: 'Household not found' });
   const children = await prisma.user.findMany({
     where: { parentId: parent.id },
     select: { id: true, name: true },
@@ -21,6 +32,27 @@ router.get('/children-public', async (req, res) => {
 });
 
 router.use(requireAuth);
+
+// Read the logged-in parent's household code (for sharing with their kids)
+router.get('/household-code', requireRole('PARENT'), async (req, res) => {
+  const parent = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { householdCode: true },
+  });
+  res.json({ householdCode: parent?.householdCode ?? null });
+});
+
+// Rotate the household code (invalidates the old one immediately)
+router.post('/household-code/rotate', requireRole('PARENT'), async (req, res) => {
+  try {
+    const householdCode = await uniqueHouseholdCode();
+    await prisma.user.update({ where: { id: req.user.id }, data: { householdCode } });
+    res.json({ householdCode });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // List children of the logged-in parent
 router.get('/children', requireRole('PARENT'), async (req, res) => {
@@ -39,8 +71,9 @@ router.post('/children', requireRole('PARENT'), async (req, res) => {
   if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN must be 4 digits' });
 
   try {
+    const pinHash = await bcrypt.hash(pin, 10);
     const child = await prisma.user.create({
-      data: { name, pin, role: 'CHILD', parentId: req.user.id },
+      data: { name, pinHash, role: 'CHILD', parentId: req.user.id },
     });
     res.status(201).json({ id: child.id, name: child.name });
   } catch (err) {
@@ -57,9 +90,14 @@ router.put('/children/:id', requireRole('PARENT'), async (req, res) => {
   const { name, pin } = req.body;
   if (pin && !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN must be 4 digits' });
 
+  // Resetting the PIN also clears any active lockout.
+  const pinData = pin
+    ? { pinHash: await bcrypt.hash(pin, 10), pinFailedAttempts: 0, pinLockedUntil: null }
+    : {};
+
   const updated = await prisma.user.update({
     where: { id: req.params.id },
-    data: { ...(name && { name }), ...(pin && { pin }) },
+    data: { ...(name && { name }), ...pinData },
     select: { id: true, name: true },
   });
   res.json(updated);

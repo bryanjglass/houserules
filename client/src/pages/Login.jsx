@@ -5,29 +5,14 @@ import api from '../api/client.js';
 
 export default function Login() {
   const [mode, setMode] = useState('parent'); // 'parent' | 'child' | 'register'
-  const [children, setChildren] = useState([]);
-  const [selectedChild, setSelectedChild] = useState('');
-  const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [parentEmail, setParentEmail] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const { login, register } = useAuth();
   const navigate = useNavigate();
-
-  // For child login: fetch list of children by parent email
-  const fetchChildren = async () => {
-    if (!parentEmail) return;
-    try {
-      const r = await api.get(`/auth/children-list?parentEmail=${encodeURIComponent(parentEmail)}`);
-      setChildren(r.data);
-    } catch {
-      setChildren([]);
-    }
-  };
 
   const handleParentLogin = async (e) => {
     e.preventDefault();
@@ -52,21 +37,6 @@ export default function Login() {
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleChildLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (!selectedChild) { setError('Select your name'); return; }
-    setLoading(true);
-    try {
-      await login({ childId: selectedChild, pin });
-      navigate('/');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Wrong PIN');
     } finally {
       setLoading(false);
     }
@@ -192,35 +162,63 @@ export default function Login() {
             </form>
           )}
 
-          {mode === 'child' && (
-            <ChildLoginForm onLogin={login} navigate={navigate} />
-          )}
+          {mode === 'child' && <ChildLoginForm />}
         </div>
       </div>
     </div>
   );
 }
 
-function ChildLoginForm({ onLogin, navigate }) {
+function ChildLoginForm() {
+  const { login, deviceLogin } = useAuth();
+  const navigate = useNavigate();
+
+  const [step, setStep] = useState('loading'); // 'loading' | 'quick' | 'code' | 'pick'
+  const [remembered, setRemembered] = useState([]);
+  const [code, setCode] = useState('');
   const [children, setChildren] = useState([]);
-  const [parentEmail, setParentEmail] = useState('');
   const [selectedChild, setSelectedChild] = useState('');
   const [pin, setPin] = useState('');
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [looked, setLooked] = useState(false);
 
-  const lookupParent = async (e) => {
+  // On a trusted device, offer one-tap login.
+  useEffect(() => {
+    api.get('/auth/remembered')
+      .then(r => {
+        const kids = r.data.children || [];
+        setRemembered(kids);
+        setStep(kids.length > 0 ? 'quick' : 'code');
+      })
+      .catch(() => setStep('code'));
+  }, []);
+
+  const quickLogin = async (childId) => {
+    setError('');
+    setLoading(true);
+    try {
+      await deviceLogin(childId);
+      navigate('/');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not sign in. Use your code instead.');
+      setStep('code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const lookupHousehold = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const r = await api.get(`/users/children-public?parentEmail=${encodeURIComponent(parentEmail)}`);
+      const r = await api.get(`/users/children-public?householdCode=${encodeURIComponent(code.trim())}`);
       setChildren(r.data);
-      setLooked(true);
-      if (r.data.length === 0) setError('No kids found for that email.');
+      setStep('pick');
+      if (r.data.length === 0) setError('No kids in this household yet.');
     } catch {
-      setError('Parent account not found.');
+      setError('That code did not match. Check with your parent.');
     } finally {
       setLoading(false);
     }
@@ -232,7 +230,7 @@ function ChildLoginForm({ onLogin, navigate }) {
     if (!selectedChild) { setError('Pick your name'); return; }
     setLoading(true);
     try {
-      await onLogin({ childId: selectedChild, pin });
+      await login({ householdCode: code.trim(), childId: selectedChild, pin, rememberDevice: remember });
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.error || 'Wrong PIN');
@@ -241,19 +239,53 @@ function ChildLoginForm({ onLogin, navigate }) {
     }
   };
 
-  if (!looked) {
+  if (step === 'loading') {
+    return <p className="text-sm text-gray-400 text-center py-4">Loading...</p>;
+  }
+
+  if (step === 'quick') {
     return (
-      <form onSubmit={lookupParent} className="space-y-4">
-        <p className="text-sm text-gray-500 text-center">Enter your parent's email to find your account.</p>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-500 text-center">Tap your name to jump in.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {remembered.map(c => (
+            <button
+              key={c.id}
+              type="button"
+              disabled={loading}
+              onClick={() => quickLogin(c.id)}
+              className="py-4 rounded-xl font-semibold border-2 border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-400 active:scale-95 transition disabled:opacity-50"
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+        <button
+          type="button"
+          onClick={() => { setStep('code'); setError(''); }}
+          className="w-full text-sm text-gray-400 hover:text-gray-600"
+        >
+          Someone else? Use your house code
+        </button>
+      </div>
+    );
+  }
+
+  if (step === 'code') {
+    return (
+      <form onSubmit={lookupHousehold} className="space-y-4">
+        <p className="text-sm text-gray-500 text-center">Enter your house code to find your account.</p>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Parent's email</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">House code</label>
           <input
-            type="email"
-            value={parentEmail}
-            onChange={e => setParentEmail(e.target.value)}
+            type="text"
+            value={code}
+            onChange={e => setCode(e.target.value.toUpperCase())}
             required
-            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            placeholder="mom@example.com"
+            autoCapitalize="characters"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-center text-xl tracking-widest font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            placeholder="ABC123"
           />
         </div>
         {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -264,6 +296,15 @@ function ChildLoginForm({ onLogin, navigate }) {
         >
           {loading ? 'Looking...' : 'Find My Account'}
         </button>
+        {remembered.length > 0 && (
+          <button
+            type="button"
+            onClick={() => { setStep('quick'); setError(''); }}
+            className="w-full text-sm text-gray-400 hover:text-gray-600"
+          >
+            ← Back to quick login
+          </button>
+        )}
       </form>
     );
   }
@@ -303,6 +344,15 @@ function ChildLoginForm({ onLogin, navigate }) {
           placeholder="••••"
         />
       </div>
+      <label className="flex items-center gap-2 text-sm text-gray-600">
+        <input
+          type="checkbox"
+          checked={remember}
+          onChange={e => setRemember(e.target.checked)}
+          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
+        />
+        Remember this device (skip the code next time)
+      </label>
       {error && <p className="text-red-500 text-sm">{error}</p>}
       <button
         type="submit"
@@ -313,7 +363,7 @@ function ChildLoginForm({ onLogin, navigate }) {
       </button>
       <button
         type="button"
-        onClick={() => { setLooked(false); setChildren([]); setSelectedChild(''); setPin(''); }}
+        onClick={() => { setStep('code'); setChildren([]); setSelectedChild(''); setPin(''); setError(''); }}
         className="w-full text-sm text-gray-400 hover:text-gray-600"
       >
         ← Back
