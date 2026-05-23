@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
-import NavBar from '../../components/NavBar.jsx';
 import TaskCard from '../../components/TaskCard.jsx';
 import AddChildModal from './AddChildModal.jsx';
 import { Avatar } from '../../components/Brand.jsx';
@@ -63,8 +62,7 @@ export default function ParentDashboard() {
   const choresApproved = tasks.filter(t => t.status === 'APPROVED').length;
 
   return (
-    <div className="min-h-screen bg-appbg">
-      <NavBar />
+    <>
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
 
         {/* Greeting */}
@@ -163,7 +161,7 @@ export default function ParentDashboard() {
       {showAddChild && (
         <AddChildModal onClose={() => setShowAddChild(false)} onAdded={refresh} />
       )}
-    </div>
+    </>
   );
 }
 

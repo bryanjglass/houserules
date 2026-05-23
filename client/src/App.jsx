@@ -8,6 +8,7 @@ import Settings from './pages/parent/Settings.jsx';
 import ChildDashboard from './pages/child/Dashboard.jsx';
 import ChildAllowance from './pages/child/Allowance.jsx';
 import Calendar from './pages/Calendar.jsx';
+import AppShell from './components/AppShell.jsx';
 
 function AppRoutes() {
   const { user } = useAuth();
@@ -31,25 +32,29 @@ function AppRoutes() {
 
   if (user.role === 'PARENT') {
     return (
-      <Routes>
-        <Route path="/" element={<ParentDashboard />} />
-        <Route path="/children/:childId" element={<ChildDetail />} />
-        <Route path="/tasks/new" element={<TaskManager />} />
-        <Route path="/tasks/:taskId/edit" element={<TaskManager />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/calendar" element={<Calendar />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<ParentDashboard />} />
+          <Route path="/children/:childId" element={<ChildDetail />} />
+          <Route path="/tasks/new" element={<TaskManager />} />
+          <Route path="/tasks/:taskId/edit" element={<TaskManager />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/calendar" element={<Calendar />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AppShell>
     );
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<ChildDashboard />} />
-      <Route path="/allowance" element={<ChildAllowance />} />
-      <Route path="/calendar" element={<Calendar />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <AppShell bg="bg-white">
+      <Routes>
+        <Route path="/" element={<ChildDashboard />} />
+        <Route path="/allowance" element={<ChildAllowance />} />
+        <Route path="/calendar" element={<Calendar />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AppShell>
   );
 }
 

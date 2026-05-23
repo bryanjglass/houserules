@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client.js';
-import NavBar from '../../components/NavBar.jsx';
 import TaskCard from '../../components/TaskCard.jsx';
 import BalanceDisplay from '../../components/BalanceDisplay.jsx';
 import { Avatar } from '../../components/Brand.jsx';
@@ -60,9 +59,7 @@ export default function ChildDetail() {
     .sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
 
   return (
-    <div className="min-h-screen bg-appbg">
-      <NavBar />
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+    <main className="max-w-2xl mx-auto px-4 py-6 space-y-5">
         <div className="flex items-center gap-3">
           <Link to="/" className="text-ink-500 hover:text-ink-900 transition" aria-label="Back">
             <ChevronLeftIcon size={22} />
@@ -156,7 +153,6 @@ export default function ChildDetail() {
             </div>
           </section>
         )}
-      </main>
-    </div>
+    </main>
   );
 }

@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import BalanceDisplay from '../../components/BalanceDisplay.jsx';
-import BottomTabBar from '../../components/BottomTabBar.jsx';
 import Thumb from '../../components/Thumb.jsx';
 
 const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -50,7 +49,7 @@ export default function ChildAllowance() {
   );
 
   return (
-    <div className="min-h-screen bg-white">
+    <>
       {/* Teal wallet header — full bleed */}
       <BalanceDisplay balance={allowance?.balance ?? 0} rounded={false} />
 
@@ -112,8 +111,6 @@ export default function ChildAllowance() {
           </div>
         )}
       </main>
-
-      <BottomTabBar />
-    </div>
+    </>
   );
 }

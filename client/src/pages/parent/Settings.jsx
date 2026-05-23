@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../api/client.js';
-import NavBar from '../../components/NavBar.jsx';
 
 export default function Settings() {
   const [code, setCode] = useState('');
@@ -51,9 +50,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-appbg">
-      <NavBar />
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+    <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         <h1 className="text-2xl font-extrabold text-ink-900">Login & Security</h1>
 
         <section className="card shadow-sm p-5 space-y-3">
@@ -106,7 +103,6 @@ export default function Settings() {
             </ul>
           )}
         </section>
-      </main>
-    </div>
+    </main>
   );
 }
