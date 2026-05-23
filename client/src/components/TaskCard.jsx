@@ -1,113 +1,110 @@
 import api from '../api/client.js';
+import Thumb from './Thumb.jsx';
 
-const STATUS_STYLES = {
-  PENDING:   'bg-yellow-100 text-yellow-800',
-  COMPLETED: 'bg-blue-100 text-blue-800',
-  APPROVED:  'bg-green-100 text-green-800',
-  REJECTED:  'bg-red-100 text-red-800',
-};
+// Map a task to a design status pill. Pending/rejected tasks become Overdue / Due Soon
+// / To Do based on their due date; completed/approved get their own pills.
+function statusPill(task) {
+  if (task.status === 'COMPLETED') return { label: 'Waiting', cls: 'badge-due' };
+  if (task.status === 'APPROVED') return { label: 'Done', cls: 'badge-ok' };
+  if (task.status === 'REJECTED') return { label: 'Needs redo', cls: 'badge-over' };
 
-const STATUS_LABELS = {
-  PENDING:   'To Do',
-  COMPLETED: 'Waiting for approval',
-  APPROVED:  'Done ✓',
-  REJECTED:  'Needs redo',
-};
+  const due = task.dueDate ? new Date(task.dueDate) : null;
+  if (due) {
+    const days = (due - new Date()) / 86400000;
+    if (days < 0) return { label: 'Overdue', cls: 'badge-over' };
+    if (days <= 2) return { label: 'Due Soon', cls: 'badge-due' };
+  }
+  return { label: 'To Do', cls: 'badge-todo' };
+}
+
+function dueLabel(task) {
+  const bits = [];
+  if (task.assignedTo) bits.push(task.assignedTo.name);
+  if (task.dueDate) {
+    bits.push(
+      'Due ' + new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    );
+  }
+  return bits.join(' · ');
+}
 
 export default function TaskCard({ task, role, onUpdate }) {
-  const handleMarkDone = async () => {
-    await api.put(`/tasks/${task.id}`, {});
-    onUpdate();
-  };
-
-  const handleApprove = async () => {
-    await api.post(`/tasks/${task.id}/approve`);
-    onUpdate();
-  };
-
-  const handleReject = async () => {
-    await api.post(`/tasks/${task.id}/reject`);
-    onUpdate();
-  };
-
+  const handleMarkDone = async () => { await api.put(`/tasks/${task.id}`, {}); onUpdate(); };
+  const handleApprove = async () => { await api.post(`/tasks/${task.id}/approve`); onUpdate(); };
+  const handleReject = async () => { await api.post(`/tasks/${task.id}/reject`); onUpdate(); };
   const handleDelete = async () => {
     if (!confirm(`Delete "${task.title}"?`)) return;
     await api.delete(`/tasks/${task.id}`);
     onUpdate();
   };
 
+  const pill = statusPill(task);
+  const meta = dueLabel(task);
+
+  const childCanAct = role === 'CHILD' && (task.status === 'PENDING' || task.status === 'REJECTED');
+  const parentCanReview = role === 'PARENT' && task.status === 'COMPLETED';
+  const hasActions = childCanAct || parentCanReview || role === 'PARENT';
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <div className="flex items-start justify-between gap-2">
+    <div className="card p-3">
+      <div className="flex items-center gap-3">
+        <Thumb size={44} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-gray-900 truncate">{task.title}</h3>
+            <h3 className="text-[14px] font-bold text-ink-900 truncate">{task.title}</h3>
             {task.isRecurring && (
-              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                {task.recurrence?.toLowerCase()}
-              </span>
+              <span className="badge badge-todo capitalize">{task.recurrence?.toLowerCase()}</span>
             )}
           </div>
           {task.description && (
-            <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>
+            <p className="text-[11.5px] text-ink-500 mt-0.5 truncate">{task.description}</p>
           )}
-          {task.assignedTo && (
-            <p className="text-xs text-gray-400 mt-1">Assigned to: {task.assignedTo.name}</p>
-          )}
+          {meta && <p className="text-[11.5px] text-ink-400 mt-0.5">{meta}</p>}
         </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
+        <div className="text-right shrink-0">
           {task.dollarAmount ? (
-            <span className="text-green-600 font-bold">${task.dollarAmount.toFixed(2)}</span>
+            <div className="text-[14px] font-extrabold text-ink-900">${task.dollarAmount.toFixed(2)}</div>
           ) : (
-            <span className="text-gray-300 text-sm">No pay</span>
+            <div className="text-[12px] text-ink-300 font-semibold">No pay</div>
           )}
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[task.status]}`}>
-            {STATUS_LABELS[task.status]}
-          </span>
+          <span className={`${pill.cls} mt-1`}>{pill.label}</span>
         </div>
       </div>
 
-      {task.dueDate && (
-        <p className="text-xs text-gray-400 mt-2">
-          Due: {new Date(task.dueDate).toLocaleDateString()}
-        </p>
+      {hasActions && (
+        <div className="flex gap-2 mt-3">
+          {childCanAct && (
+            <button onClick={handleMarkDone} className="btn-primary flex-1 !py-2 !text-[14px]">
+              Mark Done
+            </button>
+          )}
+          {parentCanReview && (
+            <>
+              <button
+                onClick={handleApprove}
+                className="flex-1 bg-money-600 text-white text-[14px] font-bold py-2 rounded-[14px] hover:bg-money-700 active:scale-[0.98] transition"
+              >
+                Approve
+              </button>
+              <button
+                onClick={handleReject}
+                className="flex-1 bg-rose-50 text-rose-600 text-[14px] font-bold py-2 rounded-[14px] hover:brightness-95 active:scale-[0.98] transition"
+              >
+                Reject
+              </button>
+            </>
+          )}
+          {role === 'PARENT' && (
+            <button
+              onClick={handleDelete}
+              className="text-ink-400 hover:text-rose-500 text-[13px] font-semibold px-3 py-2 transition"
+              title="Delete task"
+            >
+              Delete
+            </button>
+          )}
+        </div>
       )}
-
-      <div className="flex gap-2 mt-3 flex-wrap">
-        {role === 'CHILD' && (task.status === 'PENDING' || task.status === 'REJECTED') && (
-          <button
-            onClick={handleMarkDone}
-            className="flex-1 bg-indigo-600 text-white text-sm font-semibold py-2 rounded-lg hover:bg-indigo-700 active:scale-95 transition"
-          >
-            Mark Done
-          </button>
-        )}
-        {role === 'PARENT' && task.status === 'COMPLETED' && (
-          <>
-            <button
-              onClick={handleApprove}
-              className="flex-1 bg-green-600 text-white text-sm font-semibold py-2 rounded-lg hover:bg-green-700 active:scale-95 transition"
-            >
-              Approve
-            </button>
-            <button
-              onClick={handleReject}
-              className="flex-1 bg-red-100 text-red-700 text-sm font-semibold py-2 rounded-lg hover:bg-red-200 active:scale-95 transition"
-            >
-              Reject
-            </button>
-          </>
-        )}
-        {role === 'PARENT' && (
-          <button
-            onClick={handleDelete}
-            className="text-gray-400 hover:text-red-500 text-sm px-2 py-2 transition"
-            title="Delete task"
-          >
-            🗑
-          </button>
-        )}
-      </div>
     </div>
   );
 }

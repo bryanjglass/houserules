@@ -47,60 +47,57 @@ export default function Settings() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen text-gray-400">Loading...</div>;
+    return <div className="flex items-center justify-center min-h-screen text-ink-400">Loading…</div>;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-appbg">
       <NavBar />
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800">Login & Security</h1>
+        <h1 className="text-2xl font-extrabold text-ink-900">Login & Security</h1>
 
-        <section className="bg-white rounded-xl shadow-sm p-5 space-y-3">
-          <h2 className="text-lg font-bold text-gray-800">House code</h2>
-          <p className="text-sm text-gray-500">
+        <section className="card shadow-sm p-5 space-y-3">
+          <h2 className="text-lg font-bold text-ink-900">House code</h2>
+          <p className="text-sm text-ink-500">
             Your kids enter this code to find their account on a new device. Share it only with your family.
           </p>
           <div className="flex items-center gap-3">
-            <span className="text-2xl font-mono font-bold tracking-widest bg-gray-100 rounded-lg px-4 py-2">{code}</span>
-            <button
-              onClick={copy}
-              className="text-sm text-indigo-600 font-semibold hover:text-indigo-800 transition"
-            >
+            <span className="text-2xl font-mono font-bold tracking-widest bg-[#F4F6F8] rounded-[14px] px-4 py-2">{code}</span>
+            <button onClick={copy} className="btn-ghost">
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
           <button
             onClick={rotate}
             disabled={rotating}
-            className="text-sm text-red-600 font-medium hover:text-red-800 transition disabled:opacity-50"
+            className="text-sm text-rose-600 font-semibold hover:text-rose-500 transition disabled:opacity-50"
           >
-            {rotating ? 'Generating...' : 'Generate a new code'}
+            {rotating ? 'Generating…' : 'Generate a new code'}
           </button>
         </section>
 
-        <section className="bg-white rounded-xl shadow-sm p-5 space-y-3">
-          <h2 className="text-lg font-bold text-gray-800">Trusted devices</h2>
-          <p className="text-sm text-gray-500">
+        <section className="card shadow-sm p-5 space-y-3">
+          <h2 className="text-lg font-bold text-ink-900">Trusted devices</h2>
+          <p className="text-sm text-ink-500">
             Devices where a kid chose “remember this device” can sign in with one tap. Remove any you don’t recognize.
           </p>
           {devices.length === 0 ? (
-            <p className="text-sm text-gray-400">No trusted devices yet.</p>
+            <p className="text-sm text-ink-400">No trusted devices yet.</p>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-line">
               {devices.map(d => (
                 <li key={d.id} className="flex items-center justify-between py-3">
                   <div>
-                    <p className="font-medium text-gray-800">
+                    <p className="font-bold text-ink-900">
                       {d.children.map(c => c.name).join(', ') || 'Unknown'}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-ink-400">
                       Last used {new Date(d.lastUsedAt).toLocaleDateString()}
                     </p>
                   </div>
                   <button
                     onClick={() => revoke(d.id)}
-                    className="text-sm text-red-600 font-medium hover:text-red-800 transition"
+                    className="text-sm text-rose-600 font-semibold hover:text-rose-500 transition"
                   >
                     Remove
                   </button>

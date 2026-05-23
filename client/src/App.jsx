@@ -15,7 +15,7 @@ function AppRoutes() {
   if (user === undefined) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-2xl text-gray-400">Loading...</div>
+        <div className="text-2xl text-ink-400">Loading…</div>
       </div>
     );
   }

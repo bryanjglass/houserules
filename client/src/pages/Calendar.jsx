@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import api from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import NavBar from '../components/NavBar.jsx';
+import BottomTabBar from '../components/BottomTabBar.jsx';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
@@ -11,10 +11,10 @@ const MONTHS = [
 ];
 
 const STATUS_DOT = {
-  PENDING: 'bg-yellow-400',
-  COMPLETED: 'bg-blue-400',
-  APPROVED: 'bg-green-500',
-  REJECTED: 'bg-red-400',
+  PENDING: 'bg-amber-500',
+  COMPLETED: 'bg-brand',
+  APPROVED: 'bg-money-600',
+  REJECTED: 'bg-rose-500',
 };
 
 function ymdKey(date) {
@@ -69,12 +69,11 @@ export default function Calendar() {
   const viewMonth = viewDate.getMonth();
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-appbg">
       {isParent ? <NavBar /> : (
-        <header className="bg-indigo-600 text-white px-4 py-4">
-          <div className="max-w-lg mx-auto flex items-center justify-between">
-            <h1 className="text-2xl font-bold">📅 Calendar</h1>
-            <Link to="/" className="text-indigo-200 text-sm hover:text-white">← Chores</Link>
+        <header className="bg-white border-b border-line">
+          <div className="max-w-lg mx-auto px-5 py-4">
+            <h1 className="text-xl font-extrabold text-ink-900">Calendar</h1>
           </div>
         </header>
       )}
@@ -82,26 +81,26 @@ export default function Calendar() {
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         {/* Month navigation */}
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-800">
+          <h2 className="text-lg font-extrabold text-ink-900">
             {MONTHS[viewMonth]} {viewDate.getFullYear()}
           </h2>
           <div className="flex items-center gap-1">
             <button
               onClick={() => goToMonth(-1)}
-              className="w-9 h-9 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 transition"
+              className="w-9 h-9 rounded-[10px] bg-white border border-line text-ink-500 hover:bg-appbg transition"
               aria-label="Previous month"
             >
               ‹
             </button>
             <button
               onClick={goToToday}
-              className="px-3 h-9 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+              className="px-3 h-9 rounded-[10px] bg-white border border-line text-sm font-semibold text-ink-500 hover:bg-appbg transition"
             >
               Today
             </button>
             <button
               onClick={() => goToMonth(1)}
-              className="w-9 h-9 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 transition"
+              className="w-9 h-9 rounded-[10px] bg-white border border-line text-ink-500 hover:bg-appbg transition"
               aria-label="Next month"
             >
               ›
@@ -112,12 +111,12 @@ export default function Calendar() {
         {/* Weekday header */}
         <div className="grid grid-cols-7 gap-px text-center">
           {WEEKDAYS.map(d => (
-            <div key={d} className="text-xs font-semibold text-gray-400 py-1">{d}</div>
+            <div key={d} className="text-xs font-bold text-ink-400 py-1">{d}</div>
           ))}
         </div>
 
         {/* Calendar grid */}
-        <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-xl overflow-hidden border border-gray-200">
+        <div className="grid grid-cols-7 gap-px bg-line rounded-xl overflow-hidden border border-line">
           {cells.map(cell => {
             const inMonth = cell.getMonth() === viewMonth;
             const isToday = ymdKey(cell) === ymdKey(today);
@@ -125,13 +124,13 @@ export default function Calendar() {
             return (
               <div
                 key={ymdKey(cell)}
-                className={`min-h-[5.5rem] p-1.5 ${inMonth ? 'bg-white' : 'bg-gray-50'}`}
+                className={`min-h-[5.5rem] p-1.5 ${inMonth ? 'bg-white' : 'bg-appbg'}`}
               >
                 <div className="flex justify-end">
                   <span
                     className={`text-xs w-5 h-5 flex items-center justify-center rounded-full ${
-                      isToday ? 'bg-indigo-600 text-white font-bold'
-                        : inMonth ? 'text-gray-700' : 'text-gray-300'
+                      isToday ? 'bg-brand text-white font-bold'
+                        : inMonth ? 'text-ink-700' : 'text-ink-300'
                     }`}
                   >
                     {cell.getDate()}
@@ -144,19 +143,19 @@ export default function Calendar() {
                       title={`${ev.title}${ev.projected ? ' (upcoming)' : ''}`}
                       className={`text-[10px] leading-tight px-1 py-0.5 rounded border truncate ${
                         ev.projected
-                          ? 'border-dashed border-gray-300 bg-gray-50 text-gray-400'
-                          : 'border-gray-100 bg-indigo-50 text-indigo-900'
+                          ? 'border-dashed border-ink-300 bg-appbg text-ink-400'
+                          : 'border-brand-100 bg-brand-50 text-ink-900'
                       }`}
                     >
                       <span className="flex items-center gap-1">
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[ev.status] || 'bg-gray-300'}`} />
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[ev.status] || 'bg-ink-300'}`} />
                         <span className="truncate">{ev.title}</span>
                       </span>
                       {isParent && ev.assignedTo && (
                         <span className="block truncate opacity-70">{ev.assignedTo.name}</span>
                       )}
                       {ev.dollarAmount ? (
-                        <span className="block text-green-600 font-medium">${ev.dollarAmount.toFixed(2)}</span>
+                        <span className="block text-money-600 font-bold">${ev.dollarAmount.toFixed(2)}</span>
                       ) : null}
                     </div>
                   ))}
@@ -167,37 +166,18 @@ export default function Calendar() {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 text-xs text-gray-400">
+        <div className="flex items-center gap-4 text-xs text-ink-400">
           <span className="flex items-center gap-1">
-            <span className="inline-block w-3 h-3 rounded border border-gray-100 bg-indigo-50" /> Scheduled
+            <span className="inline-block w-3 h-3 rounded border border-brand-100 bg-brand-50" /> Scheduled
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block w-3 h-3 rounded border border-dashed border-gray-300 bg-gray-50" /> Upcoming (recurring)
+            <span className="inline-block w-3 h-3 rounded border border-dashed border-ink-300 bg-appbg" /> Upcoming (recurring)
           </span>
           {loading && <span className="ml-auto">Loading…</span>}
         </div>
       </main>
 
-      {/* Child bottom nav */}
-      {!isParent && (
-        <>
-          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex shadow-lg">
-            <Link to="/" className="flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-indigo-600 transition">
-              <span className="text-xl">📋</span>
-              <span className="text-xs font-medium mt-0.5">Chores</span>
-            </Link>
-            <Link to="/calendar" className="flex-1 flex flex-col items-center py-3 text-indigo-600">
-              <span className="text-xl">📅</span>
-              <span className="text-xs font-medium mt-0.5">Calendar</span>
-            </Link>
-            <Link to="/allowance" className="flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-green-600 transition">
-              <span className="text-xl">💰</span>
-              <span className="text-xs font-medium mt-0.5">My Money</span>
-            </Link>
-          </nav>
-          <div className="h-16" />
-        </>
-      )}
+      {!isParent && <BottomTabBar />}
     </div>
   );
 }

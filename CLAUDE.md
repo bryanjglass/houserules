@@ -45,6 +45,34 @@ Seed logins: parent `parent@example.com` / `password123`; children Alex (PIN `12
 
 Railway (`railway.toml`), nixpacks builder. Build runs the client build and `prisma generate`; deploy runs `prisma migrate deploy` then starts the server. Production uses a SQLite file at `/data/prod.db` (set via `DATABASE_URL`). Required env vars: `DATABASE_URL`, `JWT_SECRET`, `CLIENT_URL`, `NODE_ENV`, `PORT`.
 
+## Design
+
+**Visual decisions are documented in `docs/design/`.** Read those files
+before building or restyling any UI — do not invent tokens, colors, or
+component patterns.
+
+- **`docs/design/DESIGN.md`** — source of truth. Color tokens, typography
+  scale, radii, shadows, spacing, component contracts, per-screen specs,
+  Tailwind config snippet. Read this in full at the start of any UI task.
+- **`docs/design/MilkMoney Design Specs.html`** — rendered visual reference
+  with annotated phone mockups. Useful for spot-checking layout; open in a
+  browser, don't read the source.
+- **`docs/design/assets/`** — source illustrations. Runtime copies are
+  served from `client/public/images/` at `/images/<file>`.
+
+**When working on UI:**
+
+1. Cite the relevant DESIGN.md section in your plan (e.g. "Per §5 Screen 2
+   and §4 Task card…"). If something isn't covered, ask before improvising.
+2. Use Tailwind tokens (`bg-brand`, `text-money-600`, `rounded-xl`) — never
+   raw hex or arbitrary pixel values. If you need a new token, add it to
+   `tailwind.config.js` AND to DESIGN.md §1 in the same change.
+3. Never use emoji glyphs as icons. Use the outline icon set (2px stroke).
+4. Dollar amounts are always `money-600` and bold. Status badges always
+   pair a `*-50` background with `*-600` text — never invert.
+5. Keep DESIGN.md and the spec doc in sync when you make design changes.
+   Updating one without the other creates drift.
+
 ## OpenSpec
 
 This repo uses OpenSpec (`openspec/`, `schema: spec-driven`) for spec-driven change management. Use the `openspec-*` / `opsx:*` skills to propose, apply, and archive changes rather than editing `openspec/` files by hand.

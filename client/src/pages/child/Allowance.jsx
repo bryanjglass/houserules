@@ -1,8 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import BalanceDisplay from '../../components/BalanceDisplay.jsx';
+import BottomTabBar from '../../components/BottomTabBar.jsx';
+import Thumb from '../../components/Thumb.jsx';
+
+const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function ChildAllowance() {
   const { user } = useAuth();
@@ -18,74 +22,98 @@ export default function ChildAllowance() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  const transactions = allowance?.transactions || [];
+
+  // Days in the current month that have an earning, for the calendar highlights.
+  const today = new Date();
+  const earnedDays = useMemo(() => {
+    const set = new Set();
+    for (const tx of transactions) {
+      const d = new Date(tx.createdAt);
+      if (tx.amount > 0 && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth()) {
+        set.add(d.getDate());
+      }
+    }
+    return set;
+  }, [transactions]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen text-gray-400 text-xl">Loading...</div>;
+    return <div className="flex items-center justify-center min-h-screen text-ink-400 text-xl">Loading…</div>;
   }
 
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const leading = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = Array.from({ length: leading + daysInMonth }, (_, i) =>
+    i < leading ? null : i - leading + 1
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
-      <header className="bg-emerald-600 text-white px-4 py-4">
-        <div className="max-w-lg mx-auto flex items-center justify-between">
-          <h1 className="text-2xl font-bold">💰 My Money</h1>
-          <Link to="/" className="text-emerald-200 text-sm hover:text-white">← Chores</Link>
+    <div className="min-h-screen bg-white">
+      {/* Teal wallet header — full bleed */}
+      <BalanceDisplay balance={allowance?.balance ?? 0} rounded={false} />
+
+      <main className="max-w-lg mx-auto px-5 pt-4">
+        {/* Month calendar with earning highlights */}
+        <div className="flex items-center justify-between">
+          <div className="text-[14px] font-extrabold">{MONTHS[month]} {year}</div>
         </div>
-      </header>
+        <div className="grid grid-cols-7 mt-2 text-[9.5px] text-ink-400 font-bold text-center">
+          {DOW.map(d => <div key={d}>{d}</div>)}
+        </div>
+        <div className="grid grid-cols-7 mt-1 gap-0.5 text-[11px] text-center font-semibold">
+          {cells.map((d, i) => {
+            if (d == null) return <div key={`x${i}`} />;
+            const isToday = d === today.getDate();
+            const earned = earnedDays.has(d);
+            return (
+              <div
+                key={d}
+                className="aspect-square grid place-items-center rounded-full relative"
+                style={{
+                  color: isToday ? '#fff' : '#0F172A',
+                  background: isToday ? '#2D7FF9' : earned ? '#DCFCE7' : 'transparent',
+                }}
+              >
+                <span>{d}</span>
+                {earned && !isToday && (
+                  <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-money-600" />
+                )}
+              </div>
+            );
+          })}
+        </div>
 
-      <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
-        {allowance && <BalanceDisplay balance={allowance.balance} />}
-
-        <section>
-          <h2 className="text-lg font-bold text-gray-800 mb-3">History</h2>
-          {!allowance || allowance.transactions.length === 0 ? (
-            <div className="bg-white rounded-xl border border-dashed border-gray-200 p-8 text-center text-gray-400">
-              <p className="text-3xl mb-2">🪙</p>
-              <p>No transactions yet. Complete some chores to earn money!</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-50 shadow-sm">
-              {allowance.transactions.map(tx => (
-                <div key={tx.id} className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      {tx.task?.title || tx.note || (tx.type === 'ADJUSTMENT' ? 'Adjustment' : 'Earned')}
-                    </p>
-                    <p className="text-xs text-gray-400">{new Date(tx.createdAt).toLocaleDateString()}</p>
+        {/* Recent earnings / activity */}
+        <h2 className="mt-4 text-[14px] font-extrabold">Recent Earnings</h2>
+        {transactions.length === 0 ? (
+          <div className="card border-dashed p-8 text-center text-ink-400 mt-2">
+            <p>No transactions yet. Complete some chores to earn money!</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5 mt-2">
+            {transactions.map(tx => (
+              <div key={tx.id} className="card p-2.5 flex items-center gap-2.5">
+                <Thumb size={34} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold truncate">
+                    {tx.task?.title || tx.note || (tx.type === 'ADJUSTMENT' ? 'Adjustment' : 'Earned')}
                   </div>
-                  <span className={`font-bold text-base ${tx.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                    {tx.amount >= 0 ? '+' : ''}${Math.abs(tx.amount).toFixed(2)}
-                  </span>
+                  <div className="text-[10.5px] text-ink-400">
+                    {new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
+                <div className={`text-[13.5px] font-extrabold ${tx.amount >= 0 ? 'text-money-600' : 'text-rose-500'}`}>
+                  {tx.amount >= 0 ? '+' : '−'}${Math.abs(tx.amount).toFixed(2)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </main>
 
-      {/* Bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex shadow-lg">
-        <Link
-          to="/"
-          className="flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-indigo-600 transition"
-        >
-          <span className="text-xl">📋</span>
-          <span className="text-xs font-medium mt-0.5">Chores</span>
-        </Link>
-        <Link
-          to="/calendar"
-          className="flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-indigo-600 transition"
-        >
-          <span className="text-xl">📅</span>
-          <span className="text-xs font-medium mt-0.5">Calendar</span>
-        </Link>
-        <Link
-          to="/allowance"
-          className="flex-1 flex flex-col items-center py-3 text-emerald-600"
-        >
-          <span className="text-xl">💰</span>
-          <span className="text-xs font-medium mt-0.5">My Money</span>
-        </Link>
-      </nav>
-      <div className="h-16" />
+      <BottomTabBar />
     </div>
   );
 }

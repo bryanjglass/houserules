@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import api from '../api/client.js';
+import { Wordmark, LogoTile } from '../components/Brand.jsx';
+import { StarIcon } from '../components/Icons.jsx';
+import landscape from '../assets/landscape.png';
+import cowMascot from '../assets/cow-mascot.png';
+
+const SKY = 'linear-gradient(180deg, #EAF4FF 0%, #F8FBFF 50%, #FFFFFF 100%)';
 
 export default function Login() {
   const [mode, setMode] = useState('parent'); // 'parent' | 'child' | 'register'
@@ -42,129 +48,97 @@ export default function Login() {
     }
   };
 
+  const isKid = mode === 'child';
+  const headline = isKid ? 'Earn, save, achieve!' : 'Raise responsible kids and smart savers.';
+  const sub = isKid
+    ? 'Every chore you do brings you closer to your goals.'
+    : 'The simple way to manage chores and allowance as a family.';
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-indigo-50 to-white px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="text-6xl mb-3">🥛</div>
-          <h1 className="text-3xl font-bold text-indigo-700">Milk Money</h1>
-          <p className="text-gray-500 mt-1">Chores & Allowance</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          {/* Mode toggle */}
-          <div className="flex rounded-lg bg-gray-100 p-1 mb-5 text-sm font-medium">
-            <button
-              onClick={() => setMode('parent')}
-              className={`flex-1 py-2 rounded-md transition ${mode === 'parent' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}
-            >
-              Parent
-            </button>
-            <button
-              onClick={() => setMode('child')}
-              className={`flex-1 py-2 rounded-md transition ${mode === 'child' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}
-            >
-              Kid
-            </button>
-          </div>
-
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm rounded-lg px-3 py-2 mb-4">{error}</div>
-          )}
-
-          {mode === 'parent' && (
-            <form onSubmit={handleParentLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  placeholder="you@example.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-xl hover:bg-indigo-700 active:scale-95 transition disabled:opacity-50"
-              >
-                {loading ? 'Signing in...' : 'Sign In'}
-              </button>
-              <p className="text-center text-sm text-gray-500">
-                New here?{' '}
-                <button type="button" onClick={() => setMode('register')} className="text-indigo-600 font-medium">
-                  Create account
-                </button>
-              </p>
-            </form>
-          )}
-
-          {mode === 'register' && (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Your name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  placeholder="Mom or Dad"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  placeholder="you@example.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-xl hover:bg-indigo-700 active:scale-95 transition disabled:opacity-50"
-              >
-                {loading ? 'Creating...' : 'Create Account'}
-              </button>
-              <p className="text-center text-sm text-gray-500">
-                Already have an account?{' '}
-                <button type="button" onClick={() => setMode('parent')} className="text-indigo-600 font-medium">
-                  Sign in
-                </button>
-              </p>
-            </form>
-          )}
-
-          {mode === 'child' && <ChildLoginForm />}
-        </div>
+    <div className="relative min-h-screen overflow-hidden flex flex-col items-center px-6 pt-10 pb-44" style={{ background: SKY }}>
+      {/* Brand / mascot */}
+      <div className="flex flex-col items-center gap-3">
+        {isKid ? (
+          <img src={cowMascot} alt="MilkMoney cow mascot" className="w-44 max-h-44 object-contain" />
+        ) : (
+          <LogoTile size={68} />
+        )}
+        <Wordmark size={isKid ? 28 : 26} />
       </div>
+
+      <h2 className="text-[22px] font-extrabold text-ink-900 text-center mt-5 mb-2 max-w-[260px]" style={{ letterSpacing: '-0.01em', lineHeight: 1.15 }}>
+        {headline}
+      </h2>
+      <p className="text-[13.5px] text-ink-500 text-center max-w-[270px] leading-relaxed">{sub}</p>
+
+      {/* Auth card */}
+      <div className="relative z-10 w-full max-w-sm mt-7 bg-white rounded-2xl shadow-lg border border-line p-6">
+        {error && (
+          <div className="bg-rose-50 text-rose-600 text-sm rounded-[14px] px-3 py-2 mb-4">{error}</div>
+        )}
+
+        {mode === 'parent' && (
+          <form onSubmit={handleParentLogin} className="space-y-4">
+            <div>
+              <label className="label">Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="input" placeholder="you@example.com" />
+            </div>
+            <div>
+              <label className="label">Password</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="input" />
+            </div>
+            <button type="submit" disabled={loading} className="btn-primary w-full">
+              {loading ? 'Signing in…' : 'Log In as Parent'}
+            </button>
+            <button type="button" onClick={() => { setMode('register'); setError(''); }} className="btn-secondary w-full">
+              Create Parent Account
+            </button>
+          </form>
+        )}
+
+        {mode === 'register' && (
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div>
+              <label className="label">Your name</label>
+              <input type="text" value={name} onChange={e => setName(e.target.value)} required className="input" placeholder="Mom or Dad" />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="input" placeholder="you@example.com" />
+            </div>
+            <div>
+              <label className="label">Password</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} className="input" />
+            </div>
+            <button type="submit" disabled={loading} className="btn-primary w-full">
+              {loading ? 'Creating…' : 'Create Account'}
+            </button>
+            <button type="button" onClick={() => { setMode('parent'); setError(''); }} className="btn-ghost w-full">
+              Already have an account? Sign in
+            </button>
+          </form>
+        )}
+
+        {mode === 'child' && <ChildLoginForm />}
+
+        {/* Role switch */}
+        {mode !== 'register' && (
+          <button
+            type="button"
+            onClick={() => { setMode(isKid ? 'parent' : 'child'); setError(''); }}
+            className="btn-ghost w-full mt-3"
+          >
+            {isKid ? 'Switch to Parent Login' : 'Switch to Kid Login'}
+          </button>
+        )}
+      </div>
+
+      {/* Pastoral landscape, full-bleed at the bottom */}
+      <img
+        src={landscape}
+        alt=""
+        className="absolute bottom-0 left-0 right-0 w-full pointer-events-none select-none z-0"
+      />
     </div>
   );
 }
@@ -240,13 +214,13 @@ function ChildLoginForm() {
   };
 
   if (step === 'loading') {
-    return <p className="text-sm text-gray-400 text-center py-4">Loading...</p>;
+    return <p className="text-sm text-ink-400 text-center py-4">Loading…</p>;
   }
 
   if (step === 'quick') {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-gray-500 text-center">Tap your name to jump in.</p>
+        <p className="text-sm text-ink-500 text-center">Tap your name to jump in.</p>
         <div className="grid grid-cols-2 gap-2">
           {remembered.map(c => (
             <button
@@ -254,18 +228,14 @@ function ChildLoginForm() {
               type="button"
               disabled={loading}
               onClick={() => quickLogin(c.id)}
-              className="py-4 rounded-xl font-semibold border-2 border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-400 active:scale-95 transition disabled:opacity-50"
+              className="py-4 rounded-[14px] font-bold border-[1.5px] border-brand-100 bg-brand-50 text-brand hover:border-brand active:scale-[0.98] transition disabled:opacity-50"
             >
               {c.name}
             </button>
           ))}
         </div>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        <button
-          type="button"
-          onClick={() => { setStep('code'); setError(''); }}
-          className="w-full text-sm text-gray-400 hover:text-gray-600"
-        >
+        {error && <p className="text-rose-500 text-sm">{error}</p>}
+        <button type="button" onClick={() => { setStep('code'); setError(''); }} className="btn-ghost w-full">
           Someone else? Use your house code
         </button>
       </div>
@@ -275,33 +245,25 @@ function ChildLoginForm() {
   if (step === 'code') {
     return (
       <form onSubmit={lookupHousehold} className="space-y-4">
-        <p className="text-sm text-gray-500 text-center">Enter your house code to find your account.</p>
+        <p className="text-sm text-ink-500 text-center">Enter your house code to find your account.</p>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">House code</label>
+          <label className="label">House code</label>
           <input
             type="text"
             value={code}
             onChange={e => setCode(e.target.value.toUpperCase())}
             required
             autoCapitalize="characters"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-center text-xl tracking-widest font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="input text-center text-xl tracking-widest font-mono uppercase"
             placeholder="ABC123"
           />
         </div>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-xl hover:bg-indigo-700 active:scale-95 transition disabled:opacity-50"
-        >
-          {loading ? 'Looking...' : 'Find My Account'}
+        {error && <p className="text-rose-500 text-sm">{error}</p>}
+        <button type="submit" disabled={loading} className="btn-primary w-full">
+          {loading ? 'Looking…' : 'Find My Account'}
         </button>
         {remembered.length > 0 && (
-          <button
-            type="button"
-            onClick={() => { setStep('quick'); setError(''); }}
-            className="w-full text-sm text-gray-400 hover:text-gray-600"
-          >
+          <button type="button" onClick={() => { setStep('quick'); setError(''); }} className="btn-ghost w-full">
             ← Back to quick login
           </button>
         )}
@@ -312,17 +274,17 @@ function ChildLoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Who are you?</label>
+        <label className="label">Who are you?</label>
         <div className="grid grid-cols-2 gap-2">
           {children.map(c => (
             <button
               key={c.id}
               type="button"
               onClick={() => setSelectedChild(c.id)}
-              className={`py-3 rounded-xl font-semibold text-sm border-2 transition ${
+              className={`py-3 rounded-[14px] font-bold text-sm border-[1.5px] transition ${
                 selectedChild === c.id
-                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                  : 'border-gray-200 text-gray-700 hover:border-indigo-300'
+                  ? 'border-brand bg-brand-50 text-brand'
+                  : 'border-line text-ink-700 hover:border-brand-100'
               }`}
             >
               {c.name}
@@ -331,7 +293,7 @@ function ChildLoginForm() {
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Your PIN</label>
+        <label className="label">Your PIN</label>
         <input
           type="password"
           inputMode="numeric"
@@ -340,31 +302,27 @@ function ChildLoginForm() {
           value={pin}
           onChange={e => setPin(e.target.value)}
           required
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          className="input text-center text-2xl tracking-widest"
           placeholder="••••"
         />
       </div>
-      <label className="flex items-center gap-2 text-sm text-gray-600">
+      <label className="flex items-center gap-2 text-sm text-ink-700">
         <input
           type="checkbox"
           checked={remember}
           onChange={e => setRemember(e.target.checked)}
-          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-300"
+          className="rounded border-line text-brand focus:ring-brand-50"
         />
         Remember this device (skip the code next time)
       </label>
-      {error && <p className="text-red-500 text-sm">{error}</p>}
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-xl hover:bg-indigo-700 active:scale-95 transition disabled:opacity-50"
-      >
-        {loading ? 'Signing in...' : 'Let me in! 🚀'}
+      {error && <p className="text-rose-500 text-sm">{error}</p>}
+      <button type="submit" disabled={loading} className="btn-primary w-full">
+        {loading ? 'Signing in…' : <><StarIcon size={16} /> Let me in!</>}
       </button>
       <button
         type="button"
         onClick={() => { setStep('code'); setChildren([]); setSelectedChild(''); setPin(''); setError(''); }}
-        className="w-full text-sm text-gray-400 hover:text-gray-600"
+        className="btn-ghost w-full"
       >
         ← Back
       </button>

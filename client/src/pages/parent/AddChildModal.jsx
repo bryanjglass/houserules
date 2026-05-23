@@ -25,22 +25,15 @@ export default function AddChildModal({ onClose, onAdded }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
-      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
-        <h2 className="text-xl font-bold mb-4">Add a Kid</h2>
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-lg">
+        <h2 className="text-xl font-extrabold mb-4 text-ink-900">Add a Kid</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              required
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              placeholder="Alex"
-            />
+            <label className="label">Name</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} required className="input" placeholder="Alex" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">4-digit PIN</label>
+            <label className="label">4-digit PIN</label>
             <input
               type="password"
               inputMode="numeric"
@@ -49,25 +42,21 @@ export default function AddChildModal({ onClose, onAdded }) {
               value={pin}
               onChange={e => setPin(e.target.value)}
               required
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="input text-center text-2xl tracking-widest"
               placeholder="••••"
             />
           </div>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+          {error && <p className="text-rose-500 text-sm">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 border border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl hover:bg-gray-50 transition"
+              className="flex-1 border border-line text-ink-700 font-bold py-2.5 rounded-[14px] hover:bg-appbg transition"
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-indigo-600 text-white font-semibold py-2.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition disabled:opacity-50"
-            >
-              {loading ? 'Adding...' : 'Add Kid'}
+            <button type="submit" disabled={loading} className="btn-primary flex-1 !py-2.5">
+              {loading ? 'Adding…' : 'Add Kid'}
             </button>
           </div>
         </form>
