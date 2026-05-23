@@ -14,7 +14,7 @@ export default function NavBar() {
     <header className="bg-indigo-600 text-white shadow-md">
       <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
         <Link to="/" className="text-xl font-bold tracking-tight flex items-center gap-2">
-          🏠 House Rules
+          📒 Trapper Keeper
         </Link>
         <div className="flex items-center gap-3">
           <Link
