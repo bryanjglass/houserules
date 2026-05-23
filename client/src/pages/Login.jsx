@@ -46,8 +46,8 @@ export default function Login() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-indigo-50 to-white px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-6xl mb-3">🏠</div>
-          <h1 className="text-3xl font-bold text-indigo-700">House Rules</h1>
+          <div className="text-6xl mb-3">🥛</div>
+          <h1 className="text-3xl font-bold text-indigo-700">Milk Money</h1>
           <p className="text-gray-500 mt-1">Chores & Allowance</p>
         </div>
 
