@@ -76,8 +76,7 @@ export default function TaskManager() {
   const disabled = loading || children.length === 0;
 
   return (
-    <div className="min-h-screen bg-white">
-      <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-5 pt-3 pb-10">
+    <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-5 pt-3 pb-10">
         {/* Header */}
         <div className="flex items-center justify-between py-2">
           <button type="button" onClick={() => navigate(-1)} className="text-ink-900" aria-label="Back">
@@ -220,7 +219,6 @@ export default function TaskManager() {
             {loading ? 'Creating…' : 'Create Task'}
           </button>
         </div>
-      </form>
-    </div>
+    </form>
   );
 }

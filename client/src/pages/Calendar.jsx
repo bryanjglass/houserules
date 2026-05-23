@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import NavBar from '../components/NavBar.jsx';
-import BottomTabBar from '../components/BottomTabBar.jsx';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
@@ -69,16 +67,7 @@ export default function Calendar() {
   const viewMonth = viewDate.getMonth();
 
   return (
-    <div className="min-h-screen bg-appbg">
-      {isParent ? <NavBar /> : (
-        <header className="bg-white border-b border-line">
-          <div className="max-w-lg mx-auto px-5 py-4">
-            <h1 className="text-xl font-extrabold text-ink-900">Calendar</h1>
-          </div>
-        </header>
-      )}
-
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+    <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         {/* Month navigation */}
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-extrabold text-ink-900">
@@ -175,9 +164,6 @@ export default function Calendar() {
           </span>
           {loading && <span className="ml-auto">Loading…</span>}
         </div>
-      </main>
-
-      {!isParent && <BottomTabBar />}
-    </div>
+    </main>
   );
 }

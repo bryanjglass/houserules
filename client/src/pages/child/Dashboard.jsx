@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import TaskCard from '../../components/TaskCard.jsx';
-import BottomTabBar from '../../components/BottomTabBar.jsx';
 import { Avatar } from '../../components/Brand.jsx';
 import { StarIcon } from '../../components/Icons.jsx';
 
@@ -38,8 +37,7 @@ export default function ChildDashboard() {
   const list = tab === 'todo' ? activeTasks : doneTasks;
 
   return (
-    <div className="min-h-screen bg-white">
-      <main className="max-w-lg mx-auto px-5 pt-4 pb-2">
+    <main className="max-w-lg mx-auto px-5 pt-4 pb-2">
         {/* Greeting + balance pill */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -95,9 +93,6 @@ export default function ChildDashboard() {
             ))}
           </div>
         )}
-      </main>
-
-      <BottomTabBar />
-    </div>
+    </main>
   );
 }

@@ -1,22 +1,18 @@
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { Wordmark, LogoTile } from './Brand.jsx';
-import { CalendarIcon, SettingsIcon, PlusIcon, LogoutIcon } from './Icons.jsx';
+import { PlusIcon, LogoutIcon } from './Icons.jsx';
 
-export default function NavBar() {
+// Shared top bar for both roles: MilkMoney logo (left) + logout (right).
+// Parents additionally get the "New Task" primary action.
+export default function TopBar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
-
-  const linkClass = (to) =>
-    `flex items-center gap-1.5 text-[13px] font-semibold transition ${
-      pathname === to ? 'text-brand' : 'text-ink-500 hover:text-ink-900'
-    }`;
 
   return (
     <header className="bg-white border-b border-line sticky top-0 z-40">
@@ -26,14 +22,6 @@ export default function NavBar() {
           <Wordmark size={22} />
         </Link>
         <div className="flex items-center gap-4">
-          <Link to="/calendar" className={linkClass('/calendar')}>
-            <CalendarIcon size={18} /> Calendar
-          </Link>
-          {user?.role === 'PARENT' && (
-            <Link to="/settings" className={linkClass('/settings')}>
-              <SettingsIcon size={18} /> Settings
-            </Link>
-          )}
           {user?.role === 'PARENT' && (
             <Link to="/tasks/new" className="btn-primary !px-3.5 !py-2 !text-[13px] !rounded-xl">
               <PlusIcon size={16} /> New Task
