@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { authLimiter } from '../middleware/rateLimit.js';
 import { generateHouseholdCode, generateDeviceToken, hashToken } from '../lib/codes.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 const MAX_PIN_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
@@ -81,7 +81,7 @@ async function rememberDeviceForChild(req, res, child) {
 
 // Parent login: email + password
 // Child login: householdCode + childId + pin (+ optional rememberDevice)
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   const { email, password, householdCode, childId, pin, rememberDevice } = req.body;
 
   try {
@@ -159,7 +159,7 @@ router.get('/remembered', async (req, res) => {
 });
 
 // Passwordless login on a trusted device — no PIN.
-router.post('/device-login', async (req, res) => {
+router.post('/device-login', authLimiter, async (req, res) => {
   const { childId } = req.body;
   try {
     const device = await deviceFromCookie(req);
@@ -178,7 +178,7 @@ router.post('/device-login', async (req, res) => {
 });
 
 // First-time parent registration
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email, and password required' });
 

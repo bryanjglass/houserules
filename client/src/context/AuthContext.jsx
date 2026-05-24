@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import api from '../api/client.js';
+import api, { setUnauthorizedHandler } from '../api/client.js';
 
 const AuthContext = createContext(null);
 
@@ -7,6 +7,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(undefined); // undefined = loading
 
   useEffect(() => {
+    // Any 401 (expired/invalid session) drops us back to logged-out state.
+    setUnauthorizedHandler(() => setUser(null));
     api.get('/auth/me')
       .then(r => setUser(r.data))
       .catch(() => setUser(null));
