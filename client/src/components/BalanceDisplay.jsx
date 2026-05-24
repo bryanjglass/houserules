@@ -1,4 +1,5 @@
 import moneyJar from '../assets/money-jar.png';
+import { formatCents } from '../lib/money.js';
 
 // Teal-gradient wallet header — the only place the teal gradient appears (it signals
 // "the child's money"). Sparkle highlights + the savings-jar illustration on the right.
@@ -19,7 +20,7 @@ export default function BalanceDisplay({ balance, label = 'My Wallet', rounded =
         <div>
           <p className="text-[12.5px] font-semibold opacity-90">{label}</p>
           <p className="text-[36px] font-extrabold leading-tight mt-1" style={{ letterSpacing: '-0.02em' }}>
-            ${balance.toFixed(2)}
+            {formatCents(balance)}
           </p>
           <p className="text-[11.5px] opacity-90 mt-1">Available Balance ✨</p>
         </div>

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client.js';
 import { Avatar } from '../../components/Brand.jsx';
 import { ChevronLeftIcon, CalendarIcon } from '../../components/Icons.jsx';
+import { dollarsToCents } from '../../lib/money.js';
 
 const RECURRENCE_OPTIONS = [
   { value: 'DAILY', label: 'Every day' },
@@ -59,7 +60,7 @@ export default function TaskManager() {
       await api.post('/tasks', {
         title,
         description: description || undefined,
-        dollarAmount: dollarAmount ? parseFloat(dollarAmount) : undefined,
+        dollarAmount: dollarAmount ? dollarsToCents(dollarAmount) : undefined,
         assignedToId: isUpForGrabs ? undefined : assignedToId,
         isUpForGrabs,
         dueDate: dueDate || undefined,

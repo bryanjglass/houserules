@@ -6,6 +6,7 @@ import TaskCard from '../../components/TaskCard.jsx';
 import AddChildModal from './AddChildModal.jsx';
 import { Avatar } from '../../components/Brand.jsx';
 import { BellIcon, PlusIcon } from '../../components/Icons.jsx';
+import { formatCents } from '../../lib/money.js';
 
 function greeting() {
   const h = new Date().getHours();
@@ -99,7 +100,7 @@ export default function ParentDashboard() {
                 <Avatar name={child.name} size={40} />
                 <div className="text-[12.5px] font-bold text-ink-900">{child.name}</div>
                 <div className="text-[13px] text-money-600 font-extrabold">
-                  ${(balances[child.id]?.balance ?? 0).toFixed(2)}
+                  {formatCents(balances[child.id]?.balance ?? 0)}
                 </div>
                 <div className="text-[10px] text-ink-400">Balance</div>
               </Link>
@@ -116,7 +117,7 @@ export default function ParentDashboard() {
 
         {/* Stats */}
         <section className="grid grid-cols-2 gap-2.5">
-          <StatTile icon="$" tint="#16A34A" label="Total Allowance Paid" value={`$${totalPaid.toFixed(2)}`} caption="This month" />
+          <StatTile icon="$" tint="#16A34A" label="Total Allowance Paid" value={formatCents(totalPaid)} caption="This month" />
           <StatTile icon="✓" tint="#2D7FF9" label="Chores Completed" value={String(choresApproved)} caption="All time" />
         </section>
 

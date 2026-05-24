@@ -3,6 +3,7 @@ import api from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import BalanceDisplay from '../../components/BalanceDisplay.jsx';
 import Thumb from '../../components/Thumb.jsx';
+import { formatCents } from '../../lib/money.js';
 
 const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -104,7 +105,7 @@ export default function ChildAllowance() {
                   </div>
                 </div>
                 <div className={`text-[13.5px] font-extrabold ${tx.amount >= 0 ? 'text-money-600' : 'text-rose-500'}`}>
-                  {tx.amount >= 0 ? '+' : '−'}${Math.abs(tx.amount).toFixed(2)}
+                  {tx.amount >= 0 ? '+' : '−'}{formatCents(Math.abs(tx.amount))}
                 </div>
               </div>
             ))}

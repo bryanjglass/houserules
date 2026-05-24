@@ -60,7 +60,7 @@ model Task {
   id           String   @id @default(cuid())
   title        String
   description  String?
-  dollarAmount Float?
+  dollarAmount Int? // integer cents (e.g. 250 = $2.50)
   status       String   @default("PENDING")
   isUpForGrabs Boolean  @default(false)
 
@@ -91,7 +91,7 @@ model Transaction {
   user      User     @relation(fields: [userId], references: [id])
   taskId    String?  @unique
   task      Task?    @relation(fields: [taskId], references: [id])
-  amount    Float
+  amount    Int // integer cents; negative for deductions
   type      String
   note      String?
   createdAt DateTime @default(now())
