@@ -26,6 +26,7 @@ export default function TaskManager() {
   const [description, setDescription] = useState('');
   const [dollarAmount, setDollarAmount] = useState('');
   const [assignedToId, setAssignedToId] = useState(preselectedChildId);
+  const [isUpForGrabs, setIsUpForGrabs] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrence, setRecurrence] = useState('WEEKLY');
@@ -52,20 +53,21 @@ export default function TaskManager() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!assignedToId) { setError('Select a kid'); return; }
+    if (!isUpForGrabs && !assignedToId) { setError('Select a kid'); return; }
     setLoading(true);
     try {
       await api.post('/tasks', {
         title,
         description: description || undefined,
         dollarAmount: dollarAmount ? parseFloat(dollarAmount) : undefined,
-        assignedToId,
+        assignedToId: isUpForGrabs ? undefined : assignedToId,
+        isUpForGrabs,
         dueDate: dueDate || undefined,
         isRecurring,
         recurrence: isRecurring ? recurrence : undefined,
         weeklyDays: isRecurring && recurrence === 'WEEKLY' && weeklyDays.length ? weeklyDays : undefined,
       });
-      navigate(assignedToId ? `/children/${assignedToId}` : '/');
+      navigate(!isUpForGrabs && assignedToId ? `/children/${assignedToId}` : '/');
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create task');
     } finally {
@@ -130,32 +132,51 @@ export default function TaskManager() {
             </div>
           </div>
 
-          {/* Assign To */}
-          <div>
-            <label className="label">Assign To</label>
-            {children.length === 0 ? (
-              <p className="text-sm text-ink-400">No kids yet — add one first.</p>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
-                {children.map(c => {
-                  const on = assignedToId === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setAssignedToId(c.id)}
-                      className={`flex items-center gap-2 rounded-[14px] p-2.5 border-[1.5px] transition ${
-                        on ? 'border-brand bg-brand-50' : 'border-line hover:border-brand-100'
-                      }`}
-                    >
-                      <Avatar name={c.name} size={28} />
-                      <span className="text-[12.5px] font-bold text-ink-900 truncate">{c.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+          {/* Up for grabs — any kid can claim it, first come first served */}
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isUpForGrabs}
+              onClick={() => setIsUpForGrabs(!isUpForGrabs)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isUpForGrabs ? 'bg-violet-600' : 'bg-ink-300'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isUpForGrabs ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <div>
+              <span className="text-[13px] font-bold text-ink-700">Up for grabs</span>
+              <p className="text-[11px] text-ink-400">Any kid can claim it — first to grab wins.</p>
+            </div>
           </div>
+
+          {/* Assign To — hidden when the chore is up for grabs */}
+          {!isUpForGrabs && (
+            <div>
+              <label className="label">Assign To</label>
+              {children.length === 0 ? (
+                <p className="text-sm text-ink-400">No kids yet — add one first.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {children.map(c => {
+                    const on = assignedToId === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setAssignedToId(c.id)}
+                        className={`flex items-center gap-2 rounded-[14px] p-2.5 border-[1.5px] transition ${
+                          on ? 'border-brand bg-brand-50' : 'border-line hover:border-brand-100'
+                        }`}
+                      >
+                        <Avatar name={c.name} size={28} />
+                        <span className="text-[12.5px] font-bold text-ink-900 truncate">{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Recurring */}
           <div className="flex items-center gap-3 pt-1">

@@ -51,15 +51,21 @@ model TrustedDevice {
 // status: "PENDING" | "COMPLETED" | "APPROVED" | "REJECTED"
 // recurrence: "DAILY" | "WEEKLY" | "MONTHLY"
 // weeklyDays: comma-separated day numbers 0-6 (0=Sun..6=Sat) for WEEKLY tasks; null/empty = every 7 days
+// isUpForGrabs + assignedToId encode three states (the flag stays true even after a claim):
+//   normal task   -> isUpForGrabs=false, assignedToId set
+//   open pool      -> isUpForGrabs=true,  assignedToId=null (visible to the whole household)
+//   grabbed/locked -> isUpForGrabs=true,  assignedToId set  (behaves like a normal task)
+// An open chore's household is derived from createdById (always the parent).
 model Task {
   id           String   @id @default(cuid())
   title        String
   description  String?
   dollarAmount Float?
   status       String   @default("PENDING")
+  isUpForGrabs Boolean  @default(false)
 
-  assignedToId String
-  assignedTo   User   @relation("AssignedTo", fields: [assignedToId], references: [id])
+  assignedToId String?
+  assignedTo   User?  @relation("AssignedTo", fields: [assignedToId], references: [id])
   createdById  String
   createdBy    User   @relation("CreatedBy", fields: [createdById], references: [id])
 

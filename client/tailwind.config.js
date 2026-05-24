@@ -21,6 +21,7 @@ export default {
         money: { 700: '#15803D', 600: '#16A34A', 50: '#DCFCE7' },
         amber: { 600: '#D97706', 500: '#F59E0B', 50: '#FEF3C7' },
         rose:  { 600: '#DC2626', 500: '#EF4444', 50: '#FEE2E2' },
+        violet: { 600: '#7C3AED', 500: '#8B5CF6', 50: '#EDE9FE' },
         teal:  { start: '#34D399', end: '#10B981' },
       },
       fontFamily: {

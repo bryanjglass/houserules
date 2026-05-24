@@ -49,6 +49,8 @@ All values are flat hex; map them onto the Tailwind config in §6.
 | `amber-50`  | `#FEF3C7` | "Due Soon" badge bg              |
 | `rose-600`  | `#DC2626` | "Overdue", destructive           |
 | `rose-50`   | `#FEE2E2` | "Overdue" badge bg               |
+| `violet-600`| `#7C3AED` | "Up for grabs" badge text        |
+| `violet-50` | `#EDE9FE` | "Up for grabs" badge bg          |
 
 ### Wallet (Kid only)
 

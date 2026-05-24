@@ -30,10 +30,14 @@ export default function ChildDashboard() {
     return <div className="flex items-center justify-center min-h-screen text-ink-400 text-xl">Loading…</div>;
   }
 
-  const activeTasks = tasks
+  // Unclaimed household chores anyone can grab (server only returns the child's
+  // own household pool). Everything else is the child's own task.
+  const poolTasks = tasks.filter(t => t.isUpForGrabs && !t.assignedToId);
+  const ownTasks = tasks.filter(t => t.assignedToId === user?.id);
+  const activeTasks = ownTasks
     .filter(t => t.status !== 'APPROVED')
     .sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9));
-  const doneTasks = tasks.filter(t => t.status === 'APPROVED');
+  const doneTasks = ownTasks.filter(t => t.status === 'APPROVED');
   const list = tab === 'todo' ? activeTasks : doneTasks;
 
   return (
@@ -77,6 +81,21 @@ export default function ChildDashboard() {
             );
           })}
         </div>
+
+        {/* Up for grabs — open household chores, shown only in the To Do tab */}
+        {tab === 'todo' && poolTasks.length > 0 && (
+          <div className="mt-[18px]">
+            <h2 className="text-[14px] font-bold text-ink-900 flex items-center gap-2">
+              Up for Grabs
+              <span className="badge badge-grab">First come, first served</span>
+            </h2>
+            <div className="flex flex-col gap-2.5 mt-2.5">
+              {poolTasks.map(task => (
+                <TaskCard key={task.id} task={task} role="CHILD" onUpdate={refresh} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Task list */}
         <h2 className="mt-[18px] text-[14px] font-bold text-ink-900">
