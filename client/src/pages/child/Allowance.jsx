@@ -3,6 +3,7 @@ import api from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import BalanceDisplay from '../../components/BalanceDisplay.jsx';
 import Thumb from '../../components/Thumb.jsx';
+import SavingsGoalCard from '../../components/SavingsGoalCard.jsx';
 import { formatCents } from '../../lib/money.js';
 
 const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -11,16 +12,35 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 export default function ChildAllowance() {
   const { user } = useAuth();
   const [allowance, setAllowance] = useState(null);
+  const [goal, setGoal] = useState(null);
+  const [cashingIn, setCashingIn] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!user) return;
-    const r = await api.get(`/allowance/${user.id}`);
-    setAllowance(r.data);
+    const [allowanceRes, goalRes] = await Promise.all([
+      api.get(`/allowance/${user.id}`),
+      api.get(`/goals/${user.id}`).catch(() => null),
+    ]);
+    setAllowance(allowanceRes.data);
+    setGoal(goalRes?.data?.goal ?? null);
     setLoading(false);
   }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  const handleCashIn = async () => {
+    if (!goal) return;
+    setCashingIn(true);
+    try {
+      await api.post(`/goals/${goal.id}/request-cash-in`);
+      await refresh();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not request cash-in');
+    } finally {
+      setCashingIn(false);
+    }
+  };
 
   const transactions = allowance?.transactions || [];
 
@@ -98,7 +118,10 @@ export default function ChildAllowance() {
                 <Thumb size={34} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold truncate">
-                    {tx.task?.title || tx.note || (tx.type === 'ADJUSTMENT' ? 'Adjustment' : 'Earned')}
+                    {tx.task?.title
+                      || (tx.goal?.title ? `Cashed in: ${tx.goal.title}` : null)
+                      || tx.note
+                      || (tx.type === 'ADJUSTMENT' ? 'Adjustment' : 'Earned')}
                   </div>
                   <div className="text-[10.5px] text-ink-400">
                     {new Date(tx.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -110,6 +133,14 @@ export default function ChildAllowance() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Savings Goal — DESIGN §5 Screen 6 */}
+        {goal && (
+          <>
+            <h2 className="mt-4 mb-2 text-[14px] font-extrabold">Savings Goal</h2>
+            <SavingsGoalCard goal={goal} onCashIn={handleCashIn} busy={cashingIn} />
+          </>
         )}
       </main>
     </>

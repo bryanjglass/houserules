@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import TaskCard from '../../components/TaskCard.jsx';
+import SavingsGoalCard from '../../components/SavingsGoalCard.jsx';
 import { Avatar } from '../../components/Brand.jsx';
 import { StarIcon } from '../../components/Icons.jsx';
 import { formatCents } from '../../lib/money.js';
@@ -12,16 +13,19 @@ export default function ChildDashboard() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [balance, setBalance] = useState(null);
+  const [goal, setGoal] = useState(null);
   const [tab, setTab] = useState('todo'); // 'todo' | 'done'
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [tasksRes, allowanceRes] = await Promise.all([
+    const [tasksRes, allowanceRes, goalRes] = await Promise.all([
       api.get('/tasks'),
       user ? api.get(`/allowance/${user.id}`).catch(() => null) : Promise.resolve(null),
+      user ? api.get(`/goals/${user.id}`).catch(() => null) : Promise.resolve(null),
     ]);
     setTasks(tasksRes.data);
     setBalance(allowanceRes?.data?.balance ?? null);
+    setGoal(goalRes?.data?.goal ?? null);
     setLoading(false);
   }, [user]);
 
@@ -61,6 +65,13 @@ export default function ChildDashboard() {
             </div>
           )}
         </div>
+
+        {/* Savings goal progress (read-only here; cash in from the Wallet) */}
+        {goal && (
+          <div className="mt-4">
+            <SavingsGoalCard goal={goal} />
+          </div>
+        )}
 
         {/* Segmented tabs */}
         <div className="mt-4 bg-[#F4F6F8] rounded-xl p-1 grid grid-cols-2">

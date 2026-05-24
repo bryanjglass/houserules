@@ -37,7 +37,7 @@ router.get('/:childId', async (req, res) => {
 
   const transactions = await prisma.transaction.findMany({
     where: { userId: childId },
-    include: { task: { select: { title: true } } },
+    include: { task: { select: { title: true } }, goal: { select: { title: true } } },
     orderBy: { createdAt: 'desc' },
   });
 

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client.js';
 import TaskCard from '../../components/TaskCard.jsx';
 import BalanceDisplay from '../../components/BalanceDisplay.jsx';
+import SavingsGoalCard from '../../components/SavingsGoalCard.jsx';
 import { Avatar } from '../../components/Brand.jsx';
 import { ChevronLeftIcon, PlusIcon } from '../../components/Icons.jsx';
 import { formatCents, dollarsToCents } from '../../lib/money.js';
@@ -14,22 +15,29 @@ export default function ChildDetail() {
   const [child, setChild] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [allowance, setAllowance] = useState(null);
+  const [goal, setGoal] = useState(null);
   const [showAdjust, setShowAdjust] = useState(false);
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustNote, setAdjustNote] = useState('');
   const [adjustLoading, setAdjustLoading] = useState(false);
   const [filter, setFilter] = useState('active');
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [goalTitle, setGoalTitle] = useState('');
+  const [goalTarget, setGoalTarget] = useState('');
+  const [goalBusy, setGoalBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [childrenRes, tasksRes, allowanceRes] = await Promise.all([
+    const [childrenRes, tasksRes, allowanceRes, goalRes] = await Promise.all([
       api.get('/users/children'),
       api.get('/tasks'),
       api.get(`/allowance/${childId}`),
+      api.get(`/goals/${childId}`).catch(() => null),
     ]);
     const found = childrenRes.data.find(c => c.id === childId);
     setChild(found);
     setTasks(tasksRes.data.filter(t => t.assignedToId === childId));
     setAllowance(allowanceRes.data);
+    setGoal(goalRes?.data?.goal ?? null);
   }, [childId]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -51,6 +59,63 @@ export default function ChildDetail() {
     } finally {
       setAdjustLoading(false);
     }
+  };
+
+  const submitGoal = async (e) => {
+    e.preventDefault();
+    const targetAmount = dollarsToCents(goalTarget);
+    if (!goalTitle.trim() || !targetAmount || targetAmount <= 0) {
+      alert('Enter a title and a positive target amount');
+      return;
+    }
+    setGoalBusy(true);
+    try {
+      if (goal) {
+        await api.patch(`/goals/${goal.id}`, { title: goalTitle.trim(), targetAmount });
+      } else {
+        await api.post(`/goals/${childId}`, { title: goalTitle.trim(), targetAmount });
+      }
+      setShowGoalForm(false);
+      setGoalTitle('');
+      setGoalTarget('');
+      refresh();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to save goal');
+    } finally {
+      setGoalBusy(false);
+    }
+  };
+
+  const deleteGoal = async () => {
+    if (!goal || !confirm(`Delete the goal "${goal.title}"?`)) return;
+    setGoalBusy(true);
+    try {
+      await api.delete(`/goals/${goal.id}`);
+      refresh();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete goal');
+    } finally {
+      setGoalBusy(false);
+    }
+  };
+
+  const decideCashIn = async (action) => {
+    if (!goal) return;
+    setGoalBusy(true);
+    try {
+      await api.post(`/goals/${goal.id}/${action}`);
+      refresh();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed');
+    } finally {
+      setGoalBusy(false);
+    }
+  };
+
+  const openGoalForm = () => {
+    setGoalTitle(goal?.title || '');
+    setGoalTarget(goal ? (goal.targetAmount / 100).toFixed(2) : '');
+    setShowGoalForm(true);
   };
 
   if (!child) return <div className="flex items-center justify-center min-h-screen text-ink-400">Loading…</div>;
@@ -98,6 +163,65 @@ export default function ChildDetail() {
           </div>
         )}
 
+        {/* Savings Goal */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-lg font-bold text-ink-900">Savings Goal</h2>
+            {goal && !showGoalForm && (
+              <div className="flex gap-2 text-xs font-bold">
+                <button onClick={openGoalForm} disabled={goalBusy} className="text-brand hover:text-brand-600 transition">Edit</button>
+                <button onClick={deleteGoal} disabled={goalBusy} className="text-rose-500 hover:text-rose-600 transition">Delete</button>
+              </div>
+            )}
+          </div>
+
+          {goal && !showGoalForm && (
+            <>
+              <SavingsGoalCard goal={goal} />
+              {goal.status === 'REDEEM_REQUESTED' && (
+                <div className="card p-4 mt-2 space-y-3">
+                  <p className="text-sm font-bold text-ink-900">
+                    {child.name} wants to cash in this goal for {formatCents(goal.targetAmount)}.
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={() => decideCashIn('approve')} disabled={goalBusy} className="btn-primary flex-1">
+                      {goalBusy ? 'Working…' : 'Approve'}
+                    </button>
+                    <button onClick={() => decideCashIn('reject')} disabled={goalBusy} className="btn-secondary flex-1">
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {!goal && !showGoalForm && (
+            <button onClick={openGoalForm} className="btn-secondary w-full">
+              <PlusIcon size={16} /> Set a savings goal
+            </button>
+          )}
+
+          {showGoalForm && (
+            <form onSubmit={submitGoal} className="card p-4 space-y-3">
+              <div>
+                <label className="label">Goal</label>
+                <input type="text" value={goalTitle} onChange={e => setGoalTitle(e.target.value)} required placeholder="New bike" className="input" />
+              </div>
+              <div>
+                <label className="label">Target amount</label>
+                <input type="number" step="0.01" min="0.01" value={goalTarget} onChange={e => setGoalTarget(e.target.value)} required placeholder="50.00" className="input" />
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" disabled={goalBusy} className="btn-primary flex-1">
+                  {goalBusy ? 'Saving…' : goal ? 'Save goal' : 'Create goal'}
+                </button>
+                <button type="button" onClick={() => setShowGoalForm(false)} className="btn-secondary flex-1">Cancel</button>
+              </div>
+            </form>
+          )}
+        </section>
+
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-ink-900">Tasks</h2>
           <div className="flex rounded-[10px] bg-[#F4F6F8] p-0.5 text-xs font-bold">
@@ -142,7 +266,10 @@ export default function ChildDetail() {
                 <div key={tx.id} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="text-sm font-bold text-ink-900">
-                      {tx.task?.title || tx.note || (tx.type === 'ADJUSTMENT' ? 'Manual adjustment' : 'Earned')}
+                      {tx.task?.title
+                        || (tx.goal?.title ? `Cashed in: ${tx.goal.title}` : null)
+                        || tx.note
+                        || (tx.type === 'ADJUSTMENT' ? 'Manual adjustment' : 'Earned')}
                     </p>
                     <p className="text-xs text-ink-400">{new Date(tx.createdAt).toLocaleDateString()}</p>
                   </div>

@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import tasksRoutes from './routes/tasks.js';
 import allowanceRoutes from './routes/allowance.js';
+import goalsRoutes from './routes/goals.js';
 
 // In development, load server/.env so the documented local setup works.
 // In production, Railway provides env vars directly.
@@ -49,6 +50,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/allowance', allowanceRoutes);
+app.use('/api/goals', goalsRoutes);
 
 // Serve built client in production
 const __dirname = dirname(fileURLToPath(import.meta.url));
