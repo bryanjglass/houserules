@@ -31,6 +31,8 @@ model User {
   transactions   Transaction[]
   trustedDevices TrustedDevice[] @relation("HouseholdDevices")
   rememberedOn   TrustedDevice[] @relation("RememberedChildren")
+  savingsGoals   SavingsGoal[]   @relation("ChildGoals")
+  createdGoals   SavingsGoal[]   @relation("CreatedGoals")
 
   @@index([parentId])
 }
@@ -93,17 +95,44 @@ model Task {
   @@index([templateId])
 }
 
-// type: "EARNED" | "ADJUSTMENT"
+// type: "EARNED" | "ADJUSTMENT" | "REDEEMED"
+// REDEEMED: a negative entry from cashing in a savings goal (linked via goalId).
 model Transaction {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  taskId    String?  @unique
-  task      Task?    @relation(fields: [taskId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
+  taskId    String?      @unique
+  task      Task?        @relation(fields: [taskId], references: [id])
+  goalId    String?      @unique
+  goal      SavingsGoal? @relation(fields: [goalId], references: [id])
   amount    Int // integer cents; negative for deductions
   type      String
   note      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime     @default(now())
 
   @@index([userId])
+}
+
+// status: "ACTIVE" | "REDEEM_REQUESTED" | "REDEEMED"
+// A parent-set savings target for a child. Progress is DERIVED (the child's
+// balance vs targetAmount) and never stored; a goal touches money only once, at
+// cash-in approval, which writes a single negative REDEEMED transaction.
+// targetAmount is integer cents (like Task.dollarAmount).
+// At most one non-redeemed goal per child is enforced in the API, not the
+// schema, so multiple goals (sharing the one balance pool) can be enabled later.
+model SavingsGoal {
+  id           String       @id @default(cuid())
+  childId      String
+  child        User         @relation("ChildGoals", fields: [childId], references: [id])
+  createdById  String
+  createdBy    User         @relation("CreatedGoals", fields: [createdById], references: [id])
+  title        String
+  targetAmount Int
+  status       String       @default("ACTIVE")
+  createdAt    DateTime     @default(now())
+  redeemedAt   DateTime?
+  transaction  Transaction?
+
+  @@index([childId])
+  @@index([createdById])
 }
