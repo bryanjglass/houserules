@@ -37,7 +37,6 @@ function AppRoutes() {
           <Route path="/" element={<ParentDashboard />} />
           <Route path="/children/:childId" element={<ChildDetail />} />
           <Route path="/tasks/new" element={<TaskManager />} />
-          <Route path="/tasks/:taskId/edit" element={<TaskManager />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="*" element={<Navigate to="/" replace />} />

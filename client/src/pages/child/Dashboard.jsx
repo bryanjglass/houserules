@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import TaskCard from '../../components/TaskCard.jsx';
 import { Avatar } from '../../components/Brand.jsx';
 import { StarIcon } from '../../components/Icons.jsx';
+import { formatCents } from '../../lib/money.js';
 
 const STATUS_ORDER = { REJECTED: 0, PENDING: 1, COMPLETED: 2, APPROVED: 3 };
 
@@ -56,7 +57,7 @@ export default function ChildDashboard() {
                 className="w-[18px] h-[18px] rounded-full"
                 style={{ background: 'radial-gradient(circle at 30% 30%, #FCD34D, #D97706)', boxShadow: 'inset 0 0 0 1.5px rgba(0,0,0,0.08)' }}
               />
-              <span className="text-[13px] font-extrabold text-ink-900">${balance.toFixed(2)}</span>
+              <span className="text-[13px] font-extrabold text-ink-900">{formatCents(balance)}</span>
             </div>
           )}
         </div>

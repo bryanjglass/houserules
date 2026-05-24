@@ -187,7 +187,7 @@ router.post('/', requireRole('PARENT'), async (req, res) => {
     data: {
       title,
       description,
-      dollarAmount: dollarAmount ? parseFloat(dollarAmount) : null,
+      dollarAmount: dollarAmount ? Math.round(Number(dollarAmount)) : null,
       // When up-for-grabs, leave the chore unassigned so the whole household can claim it.
       assignedToId: upForGrabs ? null : assignedToId,
       isUpForGrabs: upForGrabs,
@@ -251,7 +251,7 @@ router.put('/:id', async (req, res) => {
     data: {
       ...(title && { title }),
       ...(description !== undefined && { description }),
-      ...(dollarAmount !== undefined && { dollarAmount: dollarAmount ? parseFloat(dollarAmount) : null }),
+      ...(dollarAmount !== undefined && { dollarAmount: dollarAmount ? Math.round(Number(dollarAmount)) : null }),
       ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
       ...(assignedToId && { assignedToId }),
     },

@@ -42,11 +42,11 @@ router.get('/:childId', async (req, res) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  const balance = transactions.reduce((sum, t) => {
-    return sum + (t.type === 'EARNED' || t.amount > 0 ? t.amount : t.amount);
-  }, 0);
+  // Amounts are signed integer cents (EARNED is positive, ADJUSTMENT may be
+  // negative), so the balance is simply their sum.
+  const balance = transactions.reduce((sum, t) => sum + t.amount, 0);
 
-  res.json({ balance: Math.round(balance * 100) / 100, transactions });
+  res.json({ balance, transactions });
 });
 
 // POST /api/allowance/:childId/adjust — parent manually adjusts balance
@@ -56,8 +56,8 @@ router.post('/:childId/adjust', requireRole('PARENT'), async (req, res) => {
 
   const { amount, note } = req.body;
   if (amount === undefined || amount === null) return res.status(400).json({ error: 'amount required' });
-  const parsedAmount = parseFloat(amount);
-  if (isNaN(parsedAmount)) return res.status(400).json({ error: 'amount must be a number' });
+  const parsedAmount = Math.round(Number(amount)); // integer cents
+  if (!Number.isInteger(parsedAmount)) return res.status(400).json({ error: 'amount must be a number' });
 
   const transaction = await prisma.transaction.create({
     data: {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { formatCents } from '../lib/money.js';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
@@ -144,7 +145,7 @@ export default function Calendar() {
                         <span className="block truncate opacity-70">{ev.assignedTo.name}</span>
                       )}
                       {ev.dollarAmount ? (
-                        <span className="block text-money-600 font-bold">${ev.dollarAmount.toFixed(2)}</span>
+                        <span className="block text-money-600 font-bold">{formatCents(ev.dollarAmount)}</span>
                       ) : null}
                     </div>
                   ))}

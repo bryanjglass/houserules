@@ -5,6 +5,7 @@ import TaskCard from '../../components/TaskCard.jsx';
 import BalanceDisplay from '../../components/BalanceDisplay.jsx';
 import { Avatar } from '../../components/Brand.jsx';
 import { ChevronLeftIcon, PlusIcon } from '../../components/Icons.jsx';
+import { formatCents, dollarsToCents } from '../../lib/money.js';
 
 const STATUS_ORDER = { COMPLETED: 0, PENDING: 1, REJECTED: 2, APPROVED: 3 };
 
@@ -38,7 +39,7 @@ export default function ChildDetail() {
     setAdjustLoading(true);
     try {
       await api.post(`/allowance/${childId}/adjust`, {
-        amount: parseFloat(adjustAmount),
+        amount: dollarsToCents(adjustAmount),
         note: adjustNote || undefined,
       });
       setAdjustAmount('');
@@ -146,7 +147,7 @@ export default function ChildDetail() {
                     <p className="text-xs text-ink-400">{new Date(tx.createdAt).toLocaleDateString()}</p>
                   </div>
                   <span className={`font-extrabold ${tx.amount >= 0 ? 'text-money-600' : 'text-rose-500'}`}>
-                    {tx.amount >= 0 ? '+' : '−'}${Math.abs(tx.amount).toFixed(2)}
+                    {tx.amount >= 0 ? '+' : '−'}{formatCents(Math.abs(tx.amount))}
                   </span>
                 </div>
               ))}

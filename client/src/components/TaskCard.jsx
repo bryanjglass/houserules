@@ -1,5 +1,6 @@
 import api from '../api/client.js';
 import Thumb from './Thumb.jsx';
+import { formatCents } from '../lib/money.js';
 
 // Map a task to a design status pill. Pending/rejected tasks become Overdue / Due Soon
 // / To Do based on their due date; completed/approved get their own pills.
@@ -77,7 +78,7 @@ export default function TaskCard({ task, role, onUpdate }) {
         </div>
         <div className="text-right shrink-0">
           {task.dollarAmount ? (
-            <div className="text-[14px] font-extrabold text-ink-900">${task.dollarAmount.toFixed(2)}</div>
+            <div className="text-[14px] font-extrabold text-ink-900">{formatCents(task.dollarAmount)}</div>
           ) : (
             <div className="text-[12px] text-ink-300 font-semibold">No pay</div>
           )}

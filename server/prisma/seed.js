@@ -68,7 +68,7 @@ async function main() {
         {
           title: 'Take out the trash',
           description: 'Every Monday evening before 7pm',
-          dollarAmount: 2.0,
+          dollarAmount: 200,
           assignedToId: alex.id,
           createdById: parent.id,
           isRecurring: true,
@@ -76,13 +76,13 @@ async function main() {
         },
         {
           title: 'Clean your room',
-          dollarAmount: 3.0,
+          dollarAmount: 300,
           assignedToId: alex.id,
           createdById: parent.id,
         },
         {
           title: 'Wash the dishes',
-          dollarAmount: 1.5,
+          dollarAmount: 150,
           assignedToId: sam.id,
           createdById: parent.id,
           isRecurring: true,
