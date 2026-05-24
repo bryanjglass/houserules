@@ -44,4 +44,5 @@
   .badge-over { @apply bg-rose-50 text-rose-600; }
   .badge-todo { @apply bg-brand-50 text-brand-600; }
   .badge-ok   { @apply bg-money-50 text-money-700; }
+  .badge-grab { @apply bg-violet-50 text-violet-600; }
 }
