@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { publicLimiter } from '../middleware/rateLimit.js';
 import { generateHouseholdCode } from '../lib/codes.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 async function uniqueHouseholdCode() {
   for (let i = 0; i < 8; i++) {
@@ -18,7 +18,7 @@ async function uniqueHouseholdCode() {
 }
 
 // Public: look up children by household code (for child login screen, returns only id+name)
-router.get('/children-public', async (req, res) => {
+router.get('/children-public', publicLimiter, async (req, res) => {
   const { householdCode } = req.query;
   if (!householdCode) return res.status(400).json({ error: 'Household code required' });
   const parent = await prisma.user.findUnique({ where: { householdCode } });

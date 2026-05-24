@@ -31,6 +31,8 @@ model User {
   transactions   Transaction[]
   trustedDevices TrustedDevice[] @relation("HouseholdDevices")
   rememberedOn   TrustedDevice[] @relation("RememberedChildren")
+
+  @@index([parentId])
 }
 
 // A physical device a household has chosen to trust for passwordless child re-login.
@@ -46,6 +48,8 @@ model TrustedDevice {
   lastUsedAt DateTime @default(now())
   expiresAt  DateTime
   children   User[]   @relation("RememberedChildren")
+
+  @@index([parentId])
 }
 
 // status: "PENDING" | "COMPLETED" | "APPROVED" | "REJECTED"
@@ -82,6 +86,11 @@ model Task {
 
   createdAt   DateTime     @default(now())
   transaction Transaction?
+
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([dueDate])
+  @@index([templateId])
 }
 
 // type: "EARNED" | "ADJUSTMENT"
@@ -95,4 +104,6 @@ model Transaction {
   type      String
   note      String?
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }

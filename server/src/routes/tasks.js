@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 router.use(requireAuth);
 
@@ -267,11 +266,19 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
   if (task.createdById !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
 
   const now = new Date();
+  let conflict = false;
   await prisma.$transaction(async (tx) => {
-    await tx.task.update({
-      where: { id: task.id },
+    // Conditional flip closes the race between the status check above and here:
+    // a second concurrent approval finds the task no longer COMPLETED and bails,
+    // so the allowance is never double-credited and recurring chores spawn once.
+    const { count } = await tx.task.updateMany({
+      where: { id: task.id, status: 'COMPLETED' },
       data: { status: 'APPROVED', approvedAt: now },
     });
+    if (count === 0) {
+      conflict = true;
+      return;
+    }
 
     if (task.dollarAmount) {
       await tx.transaction.create({
@@ -307,6 +314,7 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
     }
   });
 
+  if (conflict) return res.status(409).json({ error: 'Task is not awaiting approval' });
   res.json({ ok: true });
 });
 
