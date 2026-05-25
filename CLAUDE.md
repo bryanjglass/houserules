@@ -13,13 +13,16 @@ Run from the repo root (npm workspaces: `server`, `client`).
 ```bash
 npm install                 # installs both workspaces
 npm run dev                 # runs server (:3001) and client (:5173) concurrently
+npm run typecheck           # tsc --noEmit across both workspaces (the only correctness gate)
 npm run db:migrate          # prisma migrate dev (creates/updates dev.db)
 npm run db:seed             # seed demo data (see logins below)
 npm run db:reset            # drop, re-migrate, re-seed
 ```
 
+The server runs TypeScript directly via `tsx` (no build step): `dev` is `tsx watch src/index.ts`, `start` is `tsx src/index.ts`. The client builds with Vite.
+
 Single-workspace commands: `npm run <script> --workspace=server` or `--workspace=client`.
-Client also has `build` and `preview`. There is no test suite or linter configured.
+Client also has `build` and `preview`. There is no test suite or linter; `npm run typecheck` is the closest thing to CI.
 
 First-time setup: copy `server/.env.example` to `server/.env`, then `npm run db:migrate && npm run db:seed`.
 
@@ -27,19 +30,19 @@ Seed logins: parent `parent@example.com` / `password123`; children Alex (PIN `12
 
 ## Architecture
 
-**Stack:** Express + Prisma + SQLite (`server/`), React + Vite + Tailwind + React Router (`client/`). Plain JavaScript, ESM (`"type": "module"`) throughout.
+**Stack:** Express + Prisma + SQLite (`server/`), React + Vite + Tailwind + React Router (`client/`). TypeScript, ESM (`"type": "module"`) throughout. Shared domain string-unions (`Role`, `TaskStatus`, `Recurrence`, `TransactionType`, `GoalStatus`, `AuthUser`) live in `server/src/types/domain.ts` and a mirrored `client/src/types/domain.ts` — there is no shared package, so keep the two in sync. Server imports keep `.js` specifiers (NodeNext resolves them to `.ts`); client imports are extensionless (Vite/bundler resolution).
 
 **Single data model, role-discriminated.** There is one `User` model with a `role` string of `"PARENT"` or `"CHILD"`. A child's `parentId` points to its parent (self-relation named `Family`). Nearly every authorization check is "does this child's `parentId` equal the requesting parent's id" — see the repeated `child.parentId !== req.user.id` guards in the route files. Tasks and transactions belong to children; status/type/recurrence are also stored as strings (documented in comments at the top of `server/prisma/schema.prisma`), not enums.
 
-**Auth is cookie-based JWT.** Login sets an httpOnly `token` cookie (`server/src/routes/auth.js`). `requireAuth` middleware verifies it and populates `req.user` (`{ id, role, name, parentId }`); `requireRole(...roles)` gates parent-only endpoints. Two login paths: parents use email+password (bcrypt); children use `childId`+4-digit `pin` (plaintext compare). The child login screen first calls the unauthenticated `GET /api/users/children-public?parentEmail=` to list a parent's children by name.
+**Auth is cookie-based JWT.** Login sets an httpOnly `token` cookie (`server/src/routes/auth.ts`). `requireAuth` middleware verifies it and populates `req.user` (typed as `AuthUser` = `{ id, role, name, parentId }` via an Express `Request` augmentation in `server/src/types/express.d.ts`); `requireRole(...roles)` gates parent-only endpoints. Two login paths: parents use email+password (bcrypt); children use `childId`+4-digit `pin` (plaintext compare). The child login screen first calls the unauthenticated `GET /api/users/children-public?parentEmail=` to list a parent's children by name.
 
-**Task lifecycle is a status machine:** `PENDING → COMPLETED` (child marks done) `→ APPROVED` or back to `PENDING` (parent approve/reject). Approval runs in a Prisma `$transaction`: it flips status, creates an `EARNED` transaction for the dollar amount, and — if recurring — spawns the next instance with a computed due date (`nextDueDate` in `server/src/routes/tasks.js`). Recurring tasks chain via `templateId`/`instances`.
+**Task lifecycle is a status machine:** `PENDING → COMPLETED` (child marks done) `→ APPROVED` or back to `PENDING` (parent approve/reject). Approval runs in a Prisma `$transaction`: it flips status, creates an `EARNED` transaction for the dollar amount, and — if recurring — spawns the next instance with a computed due date (`nextDueDate` in `server/src/routes/tasks.ts`). Recurring tasks chain via `templateId`/`instances`.
 
 **Allowance balance is derived, never stored.** `GET /api/allowance/:childId` sums all of a child's transactions on the fly. Transactions are either `EARNED` (from approved tasks) or `ADJUSTMENT` (manual parent correction, can be negative).
 
-**Routing mirrors roles.** `client/src/App.jsx` reads `useAuth()` and renders an entirely different route tree for `PARENT` vs `CHILD` (parent pages under `client/src/pages/parent/`, child pages under `client/src/pages/child/`). `user === undefined` means auth is still loading; `user === null` means logged out.
+**Routing mirrors roles.** `client/src/App.tsx` reads `useAuth()` and renders an entirely different route tree for `PARENT` vs `CHILD` (parent pages under `client/src/pages/parent/`, child pages under `client/src/pages/child/`). `useAuth()` returns `user` typed `AuthUser | null | undefined`: `undefined` means auth is still loading; `null` means logged out.
 
-**Client/server wiring.** The axios instance (`client/src/api/client.js`) uses baseURL `/api` with `withCredentials: true`. In dev, Vite proxies `/api` to `localhost:3001` (`client/vite.config.js`). In production the Express server serves the built client from `client/dist` and falls back to `index.html` for SPA routes — CORS is only enabled when `NODE_ENV !== 'production'`.
+**Client/server wiring.** The axios instance (`client/src/api/client.ts`) uses baseURL `/api` with `withCredentials: true`. API response shapes are typed in `client/src/types/models.ts`. In dev, Vite proxies `/api` to `localhost:3001` (`client/vite.config.js`). In production the Express server serves the built client from `client/dist` and falls back to `index.html` for SPA routes — CORS is only enabled when `NODE_ENV !== 'production'`.
 
 ## Deployment
 
