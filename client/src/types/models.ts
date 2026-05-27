@@ -15,6 +15,9 @@ export interface TaskView {
   dollarAmount: number | null;
   status: TaskStatus;
   isUpForGrabs: boolean;
+  isPerUnit?: boolean;
+  unitReward?: number | null;
+  quantity?: number | null;
   assignedToId: string | null;
   createdById: string;
   dueDate: string | null;
