@@ -435,6 +435,17 @@ router.delete('/:id', requireRole('PARENT'), async (req, res) => {
   if (!task) return res.status(404).json({ error: 'Task not found' });
   if (task.createdById !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
 
+  // Deleting a per-unit definition would orphan its completions (templateId is
+  // SET NULL on delete, and each completion already carries its own
+  // unitReward/quantity, so approved history survives). Refuse only when logs
+  // are still awaiting review, so the parent can't silently lose them.
+  if (task.isPerUnit && task.isUpForGrabs && !task.assignedToId) {
+    const pending = await prisma.task.count({ where: { templateId: task.id, status: 'COMPLETED' } });
+    if (pending > 0) {
+      return res.status(409).json({ error: `Review the ${pending} pending log${pending === 1 ? '' : 's'} before deleting this chore` });
+    }
+  }
+
   await prisma.task.delete({ where: { id: task.id } });
   res.json({ ok: true });
 });

@@ -94,9 +94,11 @@ export default function TaskCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-[14px] font-bold text-ink-900 truncate">{task.title}</h3>
-            {task.isUpForGrabs && (
+            {task.isPerUnit ? (
+              <span className="badge badge-grab">Per item</span>
+            ) : task.isUpForGrabs ? (
               <span className="badge badge-grab">Up for grabs</span>
-            )}
+            ) : null}
             {task.isRecurring && (
               <span className="badge badge-todo capitalize">{task.recurrence?.toLowerCase()}</span>
             )}
