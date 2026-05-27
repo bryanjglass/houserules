@@ -173,7 +173,30 @@ router.get('/calendar', async (req, res) => {
 
 // POST /api/tasks — parent creates task
 router.post('/', requireRole('PARENT'), async (req, res) => {
-  const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence, weeklyDays, isUpForGrabs } = req.body;
+  const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence, weeklyDays, isUpForGrabs, isPerUnit, unitReward } = req.body;
+
+  // Per-unit chore: an open, per-item-priced definition that lives in the
+  // household pool forever. No assignee, never recurring, dollarAmount stays
+  // null (the credit comes from unitReward * quantity at approval).
+  if (isPerUnit) {
+    if (!title) return res.status(400).json({ error: 'title required' });
+    const reward = unitReward ? Math.round(Number(unitReward)) : null;
+    if (!reward || reward <= 0) return res.status(400).json({ error: 'unitReward required for per-unit chores' });
+    const task = await prisma.task.create({
+      data: {
+        title,
+        description,
+        isPerUnit: true,
+        unitReward: reward,
+        isUpForGrabs: true,
+        assignedToId: null,
+        createdById: req.user!.id,
+        dueDate: dueDate ? new Date(dueDate) : null,
+      },
+    });
+    return res.status(201).json(task);
+  }
+
   const upForGrabs = Boolean(isUpForGrabs);
   // An up-for-grabs chore has no assignee; every other chore must name a child.
   if (!title || (!assignedToId && !upForGrabs)) {
@@ -212,6 +235,8 @@ router.post('/:id/claim', requireRole('CHILD'), async (req, res) => {
   const task = await prisma.task.findUnique({ where: { id: req.params.id } });
   if (!task) return res.status(404).json({ error: 'Task not found' });
   if (!task.isUpForGrabs) return res.status(400).json({ error: 'This chore is not up for grabs' });
+  // Per-unit definitions ride the same pool but are logged against, not claimed.
+  if (task.isPerUnit) return res.status(400).json({ error: 'This chore is logged, not claimed' });
   if (task.status !== 'PENDING') return res.status(400).json({ error: 'This chore can no longer be claimed' });
   // Same-household check: the chore's creator must be this child's parent.
   if (task.createdById !== req.user!.parentId) return res.status(403).json({ error: 'Forbidden' });
@@ -226,6 +251,40 @@ router.post('/:id/claim', requireRole('CHILD'), async (req, res) => {
 
   const claimed = await prisma.task.findUnique({ where: { id: task.id } });
   res.json(claimed);
+});
+
+// POST /api/tasks/:id/log-units — a child logs how many units of a per-unit
+// chore they did. Spawns a per-child completion instance; the shared definition
+// stays open so anyone (incl. this child) can log against it again.
+router.post('/:id/log-units', requireRole('CHILD'), async (req, res) => {
+  const n = Math.round(Number(req.body?.quantity));
+  if (!Number.isInteger(n) || n < 1) return res.status(400).json({ error: 'quantity must be a whole number of at least 1' });
+
+  const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  // Must be the open per-unit definition (not a completion instance) in this child's household.
+  if (!task.isPerUnit || !task.isUpForGrabs || task.assignedToId !== null) {
+    return res.status(400).json({ error: 'This chore cannot be logged' });
+  }
+  if (task.status !== 'PENDING') return res.status(400).json({ error: 'This chore is not open' });
+  if (task.createdById !== req.user!.parentId) return res.status(403).json({ error: 'Forbidden' });
+
+  const instance = await prisma.task.create({
+    data: {
+      title: task.title,
+      description: task.description,
+      isPerUnit: true,
+      unitReward: task.unitReward,
+      quantity: n,
+      isUpForGrabs: false,
+      assignedToId: req.user!.id,
+      createdById: task.createdById,
+      templateId: task.templateId || task.id,
+      status: 'COMPLETED',
+      completedAt: new Date(),
+    },
+  });
+  res.status(201).json(instance);
 });
 
 // PUT /api/tasks/:id
@@ -272,6 +331,15 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
   if (task.status !== 'COMPLETED') return res.status(400).json({ error: 'Task is not awaiting approval' });
   if (task.createdById !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
 
+  // Per-unit completions credit unitReward * count; the parent may adjust the
+  // count at approval. Other tasks pay the flat dollarAmount.
+  const rawQty = req.body?.quantity;
+  const adjustedQty = rawQty !== undefined ? Math.round(Number(rawQty)) : null;
+  const effectiveQty =
+    task.isPerUnit && adjustedQty !== null && Number.isInteger(adjustedQty) && adjustedQty >= 1
+      ? adjustedQty
+      : task.quantity;
+
   const now = new Date();
   let conflict = false;
   await prisma.$transaction(async (tx) => {
@@ -287,7 +355,19 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
       return;
     }
 
-    if (task.dollarAmount) {
+    if (task.isPerUnit && task.unitReward && effectiveQty && effectiveQty >= 1) {
+      if (effectiveQty !== task.quantity) {
+        await tx.task.update({ where: { id: task.id }, data: { quantity: effectiveQty } });
+      }
+      await tx.transaction.create({
+        data: {
+          userId: task.assignedToId!,
+          taskId: task.id,
+          amount: task.unitReward * effectiveQty,
+          type: 'EARNED',
+        },
+      });
+    } else if (!task.isPerUnit && task.dollarAmount) {
       await tx.transaction.create({
         data: {
           // A COMPLETED task always has a claimer, so assignedToId is set here.
@@ -333,6 +413,13 @@ router.post('/:id/reject', requireRole('PARENT'), async (req, res) => {
   if (task.status !== 'COMPLETED') return res.status(400).json({ error: 'Task is not awaiting approval' });
   if (task.createdById !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
 
+  // A rejected per-unit completion is discarded — the child re-logs a corrected
+  // count from the still-open definition; there is no in-place edit path.
+  if (task.isPerUnit) {
+    await prisma.task.delete({ where: { id: task.id } });
+    return res.json({ ok: true, deleted: true });
+  }
+
   // A rejected up-for-grabs chore stays locked to the claimer (assignedToId is
   // left untouched) — it does not return to the household pool.
   const updated = await prisma.task.update({
@@ -347,6 +434,17 @@ router.delete('/:id', requireRole('PARENT'), async (req, res) => {
   const task = await prisma.task.findUnique({ where: { id: req.params.id } });
   if (!task) return res.status(404).json({ error: 'Task not found' });
   if (task.createdById !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
+
+  // Deleting a per-unit definition would orphan its completions (templateId is
+  // SET NULL on delete, and each completion already carries its own
+  // unitReward/quantity, so approved history survives). Refuse only when logs
+  // are still awaiting review, so the parent can't silently lose them.
+  if (task.isPerUnit && task.isUpForGrabs && !task.assignedToId) {
+    const pending = await prisma.task.count({ where: { templateId: task.id, status: 'COMPLETED' } });
+    if (pending > 0) {
+      return res.status(409).json({ error: `Review the ${pending} pending log${pending === 1 ? '' : 's'} before deleting this chore` });
+    }
+  }
 
   await prisma.task.delete({ where: { id: task.id } });
   res.json({ ok: true });

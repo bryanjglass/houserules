@@ -62,6 +62,13 @@ model TrustedDevice {
 //   open pool      -> isUpForGrabs=true,  assignedToId=null (visible to the whole household)
 //   grabbed/locked -> isUpForGrabs=true,  assignedToId set  (behaves like a normal task)
 // An open chore's household is derived from createdById (always the parent).
+// isPerUnit chores are paid by the item and split across the household. They use
+// two row kinds linked by templateId (dollarAmount stays null on both):
+//   definition  -> isPerUnit=true, isUpForGrabs=true, assignedToId=null, status=PENDING,
+//                  unitReward set, quantity=null. Stays open in the pool forever; any
+//                  child logs against it. Never completed or credited itself.
+//   completion  -> isPerUnit=true, assignedToId=<kid>, quantity=N, unitReward inherited,
+//                  status=COMPLETED->APPROVED. One per logged count; credits unitReward*quantity.
 model Task {
   id           String   @id @default(cuid())
   title        String
@@ -69,6 +76,10 @@ model Task {
   dollarAmount Int? // integer cents (e.g. 250 = $2.50)
   status       String   @default("PENDING")
   isUpForGrabs Boolean  @default(false)
+
+  isPerUnit  Boolean @default(false)
+  unitReward Int? // per-item reward in integer cents (per-unit definition + inherited by completions)
+  quantity   Int? // units logged on a per-unit completion instance; null on the definition
 
   assignedToId String?
   assignedTo   User?  @relation("AssignedTo", fields: [assignedToId], references: [id])

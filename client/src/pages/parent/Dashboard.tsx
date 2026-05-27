@@ -53,8 +53,12 @@ export default function ParentDashboard() {
     return <div className="flex items-center justify-center min-h-screen text-ink-400">Loading…</div>;
   }
 
+  // A per-unit definition stays PENDING in the pool forever; it is not an
+  // awaiting-completion chore, so list it separately rather than as outstanding.
+  const isPerUnitDef = (t: TaskView) => !!t.isPerUnit && t.isUpForGrabs && !t.assignedToId;
   const pendingApprovals = tasks.filter(t => t.status === 'COMPLETED');
-  const outstanding = tasks.filter(t => t.status === 'PENDING' || t.status === 'REJECTED');
+  const perUnitChores = tasks.filter(isPerUnitDef);
+  const outstanding = tasks.filter(t => (t.status === 'PENDING' || t.status === 'REJECTED') && !isPerUnitDef(t));
 
   // Stats — sum of this-month EARNED transactions, and approved chores.
   let totalPaid = 0;
@@ -130,6 +134,18 @@ export default function ParentDashboard() {
             <h2 className="text-[15px] font-bold text-ink-900 mb-2.5">Needs Approval</h2>
             <div className="space-y-2.5">
               {pendingApprovals.map(task => (
+                <TaskCard key={task.id} task={task} role="PARENT" onUpdate={refresh} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Pay-per-item chores — open definitions kids log against */}
+        {perUnitChores.length > 0 && (
+          <section>
+            <h2 className="text-[15px] font-bold text-ink-900 mb-2.5">Pay-per-item Chores</h2>
+            <div className="space-y-2.5">
+              {perUnitChores.map(task => (
                 <TaskCard key={task.id} task={task} role="PARENT" onUpdate={refresh} />
               ))}
             </div>

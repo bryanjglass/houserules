@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import api from '../api/client';
 import Thumb from './Thumb';
 import { formatCents } from '../lib/money';
@@ -40,9 +41,27 @@ export default function TaskCard({
   role: Role;
   onUpdate: () => void;
 }) {
+  // A per-unit chore has two row kinds: the open definition (in the pool, no
+  // assignee) that children log against, and a per-child completion instance.
+  const isPerUnitDef = !!task.isPerUnit && task.isUpForGrabs && !task.assignedToId;
+  const isPerUnitCompletion = !!task.isPerUnit && !!task.assignedToId;
+
+  const [logQty, setLogQty] = useState('1');
+  const [reviewQty, setReviewQty] = useState(String(task.quantity ?? 1));
+
   const handleMarkDone = async () => { await api.put(`/tasks/${task.id}`, {}); onUpdate(); };
-  const handleApprove = async () => { await api.post(`/tasks/${task.id}/approve`); onUpdate(); };
+  const handleApprove = async () => {
+    await api.post(`/tasks/${task.id}/approve`, isPerUnitCompletion ? { quantity: Number(reviewQty) } : {});
+    onUpdate();
+  };
   const handleReject = async () => { await api.post(`/tasks/${task.id}/reject`); onUpdate(); };
+  const handleLog = async () => {
+    const n = Number(logQty);
+    if (!Number.isInteger(n) || n < 1) { alert('Enter a whole number of at least 1'); return; }
+    await api.post(`/tasks/${task.id}/log-units`, { quantity: n });
+    setLogQty('1');
+    onUpdate();
+  };
   const handleGrab = async () => {
     try {
       await api.post(`/tasks/${task.id}/claim`);
@@ -62,10 +81,11 @@ export default function TaskCard({
 
   // An unclaimed up-for-grabs chore: a child can grab it (not mark it done yet).
   const isOpenGrab = task.isUpForGrabs && !task.assignedToId;
-  const childCanGrab = role === 'CHILD' && isOpenGrab;
-  const childCanAct = role === 'CHILD' && !isOpenGrab && (task.status === 'PENDING' || task.status === 'REJECTED');
+  const childCanGrab = role === 'CHILD' && isOpenGrab && !task.isPerUnit;
+  const childCanLog = role === 'CHILD' && isPerUnitDef;
+  const childCanAct = role === 'CHILD' && !isOpenGrab && !task.isPerUnit && (task.status === 'PENDING' || task.status === 'REJECTED');
   const parentCanReview = role === 'PARENT' && task.status === 'COMPLETED';
-  const hasActions = childCanGrab || childCanAct || parentCanReview || role === 'PARENT';
+  const hasActions = childCanGrab || childCanLog || childCanAct || parentCanReview || role === 'PARENT';
 
   return (
     <div className="card p-3">
@@ -74,9 +94,11 @@ export default function TaskCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-[14px] font-bold text-ink-900 truncate">{task.title}</h3>
-            {task.isUpForGrabs && (
+            {task.isPerUnit ? (
+              <span className="badge badge-grab">Per item</span>
+            ) : task.isUpForGrabs ? (
               <span className="badge badge-grab">Up for grabs</span>
-            )}
+            ) : null}
             {task.isRecurring && (
               <span className="badge badge-todo capitalize">{task.recurrence?.toLowerCase()}</span>
             )}
@@ -85,9 +107,18 @@ export default function TaskCard({
             <p className="text-[11.5px] text-ink-500 mt-0.5 truncate">{task.description}</p>
           )}
           {meta && <p className="text-[11.5px] text-ink-400 mt-0.5">{meta}</p>}
+          {isPerUnitCompletion && (
+            <p className="text-[11.5px] text-ink-500 mt-0.5">{task.quantity} × {formatCents(task.unitReward)}</p>
+          )}
         </div>
         <div className="text-right shrink-0">
-          {task.dollarAmount ? (
+          {isPerUnitDef ? (
+            <div className="text-[14px] font-extrabold text-money-600">
+              {formatCents(task.unitReward)}<span className="text-[11px] font-semibold text-ink-400">/item</span>
+            </div>
+          ) : isPerUnitCompletion ? (
+            <div className="text-[14px] font-extrabold text-money-600">{formatCents((task.unitReward ?? 0) * (task.quantity ?? 0))}</div>
+          ) : task.dollarAmount ? (
             <div className="text-[14px] font-extrabold text-ink-900">{formatCents(task.dollarAmount)}</div>
           ) : (
             <div className="text-[12px] text-ink-300 font-semibold">No pay</div>
@@ -106,6 +137,22 @@ export default function TaskCard({
               Grab it
             </button>
           )}
+          {childCanLog && (
+            <div className="flex gap-2 flex-1">
+              <input
+                type="number" min={1} step={1} value={logQty}
+                onChange={e => setLogQty(e.target.value)}
+                aria-label="How many"
+                className="w-16 border-[1.5px] border-line rounded-[14px] px-3 py-2 text-[14px] font-bold text-ink-900 outline-none focus:border-brand"
+              />
+              <button
+                onClick={handleLog}
+                className="flex-1 bg-violet-600 text-white text-[14px] font-bold py-2 rounded-[14px] hover:brightness-95 active:scale-[0.98] transition"
+              >
+                Log it
+              </button>
+            </div>
+          )}
           {childCanAct && (
             <button onClick={handleMarkDone} className="btn-primary flex-1 !py-2 !text-[14px]">
               Mark Done
@@ -113,6 +160,14 @@ export default function TaskCard({
           )}
           {parentCanReview && (
             <>
+              {isPerUnitCompletion && (
+                <input
+                  type="number" min={1} step={1} value={reviewQty}
+                  onChange={e => setReviewQty(e.target.value)}
+                  aria-label="Approved count"
+                  className="w-16 border-[1.5px] border-line rounded-[14px] px-3 py-2 text-[14px] font-bold text-ink-900 outline-none focus:border-brand"
+                />
+              )}
               <button
                 onClick={handleApprove}
                 className="flex-1 bg-money-600 text-white text-[14px] font-bold py-2 rounded-[14px] hover:bg-money-700 active:scale-[0.98] transition"

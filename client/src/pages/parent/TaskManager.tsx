@@ -31,6 +31,7 @@ export default function TaskManager() {
   const [dollarAmount, setDollarAmount] = useState('');
   const [assignedToId, setAssignedToId] = useState(preselectedChildId);
   const [isUpForGrabs, setIsUpForGrabs] = useState(false);
+  const [isPerUnit, setIsPerUnit] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrence, setRecurrence] = useState<Recurrence>('WEEKLY');
@@ -57,9 +58,21 @@ export default function TaskManager() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!isUpForGrabs && !assignedToId) { setError('Select a kid'); return; }
+    if (isPerUnit && !dollarAmount) { setError('Enter a per-item reward'); return; }
+    if (!isPerUnit && !isUpForGrabs && !assignedToId) { setError('Select a kid'); return; }
     setLoading(true);
     try {
+      if (isPerUnit) {
+        await api.post('/tasks', {
+          title,
+          description: description || undefined,
+          isPerUnit: true,
+          unitReward: dollarsToCents(dollarAmount),
+          dueDate: dueDate || undefined,
+        });
+        navigate('/');
+        return;
+      }
       await api.post('/tasks', {
         title,
         description: description || undefined,
@@ -112,7 +125,7 @@ export default function TaskManager() {
           {/* Reward + Due Date */}
           <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="label">Reward</label>
+              <label className="label">{isPerUnit ? 'Reward per item' : 'Reward'}</label>
               <div className="flex items-center gap-2 border-[1.5px] border-line rounded-[14px] px-3 py-2.5 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand-50 transition">
                 <span className="w-[22px] h-[22px] rounded-full bg-money-50 text-money-700 grid place-items-center font-extrabold text-[12px] shrink-0">$</span>
                 <input
@@ -136,7 +149,29 @@ export default function TaskManager() {
             </div>
           </div>
 
+          {/* Pay per item — open, unlimited, shared; any kid logs how many they did */}
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isPerUnit}
+              onClick={() => {
+                const next = !isPerUnit;
+                setIsPerUnit(next);
+                if (next) { setIsUpForGrabs(false); setIsRecurring(false); }
+              }}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isPerUnit ? 'bg-violet-600' : 'bg-ink-300'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isPerUnit ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <div>
+              <span className="text-[13px] font-bold text-ink-700">Pay per item</span>
+              <p className="text-[11px] text-ink-400">Any kid logs how many they did — paid per item, no limit.</p>
+            </div>
+          </div>
+
           {/* Up for grabs — any kid can claim it, first come first served */}
+          {!isPerUnit && (
           <div className="flex items-center gap-3 pt-1">
             <button
               type="button"
@@ -152,9 +187,10 @@ export default function TaskManager() {
               <p className="text-[11px] text-ink-400">Any kid can claim it — first to grab wins.</p>
             </div>
           </div>
+          )}
 
-          {/* Assign To — hidden when the chore is up for grabs */}
-          {!isUpForGrabs && (
+          {/* Assign To — hidden when the chore is up for grabs or pay-per-item */}
+          {!isUpForGrabs && !isPerUnit && (
             <div>
               <label className="label">Assign To</label>
               {children.length === 0 ? (
@@ -182,7 +218,8 @@ export default function TaskManager() {
             </div>
           )}
 
-          {/* Recurring */}
+          {/* Recurring — not applicable to pay-per-item chores (inherently repeatable) */}
+          {!isPerUnit && (
           <div className="flex items-center gap-3 pt-1">
             <button
               type="button"
@@ -195,6 +232,7 @@ export default function TaskManager() {
             </button>
             <span className="text-[13px] font-bold text-ink-700">Recurring task</span>
           </div>
+          )}
 
           {isRecurring && (
             <div className="grid grid-cols-3 gap-2">
