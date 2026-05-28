@@ -171,6 +171,20 @@ router.get('/calendar', async (req, res) => {
   res.json(events);
 });
 
+// GET /api/tasks/:id — a single task, scoped to the requester (parent owner or
+// assigned child). Used by the parent edit form to pre-populate fields.
+router.get('/:id', async (req, res) => {
+  const task = await prisma.task.findUnique({
+    where: { id: req.params.id },
+    include: { assignedTo: { select: { id: true, name: true } } },
+  });
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  const user = req.user!;
+  const owns = user.role === 'PARENT' ? task.createdById === user.id : task.assignedToId === user.id;
+  if (!owns) return res.status(403).json({ error: 'Forbidden' });
+  res.json(task);
+});
+
 // POST /api/tasks — parent creates task
 router.post('/', requireRole('PARENT'), async (req, res) => {
   const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence, weeklyDays, isUpForGrabs, isPerUnit, unitReward } = req.body;
@@ -310,16 +324,56 @@ router.put('/:id', async (req, res) => {
   // up-for-grabs chores (the assignee may be null).
   if (task.createdById !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
 
-  const { title, description, dollarAmount, dueDate, assignedToId } = req.body;
+  // An approved task has already credited the allowance; its details are part of
+  // the transaction record and must not change.
+  if (task.status === 'APPROVED') return res.status(400).json({ error: 'Approved tasks cannot be edited' });
+
+  const { title, description, dollarAmount, dueDate, assignedToId, isRecurring, recurrence, weeklyDays, isUpForGrabs } = req.body;
+
+  const data: Prisma.TaskUpdateInput = {
+    ...(title && { title }),
+    ...(description !== undefined && { description }),
+    ...(dollarAmount !== undefined && { dollarAmount: dollarAmount ? Math.round(Number(dollarAmount)) : null }),
+    ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
+    ...(assignedToId && { assignedTo: { connect: { id: assignedToId } } }),
+    ...(isUpForGrabs !== undefined && { isUpForGrabs: Boolean(isUpForGrabs) }),
+  };
+
+  // Recurrence is edited as a unit: the toggle, the cadence, and (for weekly) the
+  // selected days. Serialize weeklyDays the same comma-separated way as create;
+  // turning recurrence off clears the cadence and days.
+  if (isRecurring !== undefined) {
+    const recurring = Boolean(isRecurring);
+    data.isRecurring = recurring;
+    data.recurrence = recurring ? recurrence ?? null : null;
+    const normalizedWeeklyDays =
+      recurring && recurrence === 'WEEKLY'
+        ? parseWeeklyDays(Array.isArray(weeklyDays) ? weeklyDays.join(',') : weeklyDays)
+        : [];
+    data.weeklyDays = normalizedWeeklyDays.length ? normalizedWeeklyDays.join(',') : null;
+  }
+
+  const updated = await prisma.task.update({ where: { id: task.id }, data });
+  res.json(updated);
+});
+
+// POST /api/tasks/:id/complete — parent marks an assigned task as done on the
+// child's behalf. This is a pure status transition with no credit; the parent
+// still approves separately to credit the allowance.
+router.post('/:id/complete', requireRole('PARENT'), async (req, res) => {
+  const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  if (task.createdById !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
+  // No assignee means no one to credit on approval — an open up-for-grabs chore
+  // must be claimed first.
+  if (!task.assignedToId) return res.status(400).json({ error: 'Assign the chore to a child before marking it done' });
+  if (task.status === 'APPROVED') return res.status(400).json({ error: 'Task is already approved' });
+  // Idempotent: already awaiting approval, nothing to do.
+  if (task.status === 'COMPLETED') return res.json(task);
+
   const updated = await prisma.task.update({
     where: { id: task.id },
-    data: {
-      ...(title && { title }),
-      ...(description !== undefined && { description }),
-      ...(dollarAmount !== undefined && { dollarAmount: dollarAmount ? Math.round(Number(dollarAmount)) : null }),
-      ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
-      ...(assignedToId && { assignedToId }),
-    },
+    data: { status: 'COMPLETED', completedAt: new Date() },
   });
   res.json(updated);
 });

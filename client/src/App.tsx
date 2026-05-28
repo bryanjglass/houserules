@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import ParentDashboard from './pages/parent/Dashboard';
 import ChildDetail from './pages/parent/ChildDetail';
 import TaskManager from './pages/parent/TaskManager';
+import EditTask from './pages/parent/EditTask';
 import Settings from './pages/parent/Settings';
 import ChildDashboard from './pages/child/Dashboard';
 import ChildAllowance from './pages/child/Allowance';
@@ -37,6 +38,7 @@ function AppRoutes() {
           <Route path="/" element={<ParentDashboard />} />
           <Route path="/children/:childId" element={<ChildDetail />} />
           <Route path="/tasks/new" element={<TaskManager />} />
+          <Route path="/tasks/:id/edit" element={<EditTask />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="*" element={<Navigate to="/" replace />} />
