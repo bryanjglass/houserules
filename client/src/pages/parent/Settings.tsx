@@ -1,6 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../../api/client';
 import type { TrustedDevice } from '../../types/models';
+
+// The full IANA list when the browser supports it, else a small fallback. The
+// detected zone and UTC are always included so the saved value is selectable.
+function timezoneOptions(detected: string): string[] {
+  let list: string[] = [];
+  try {
+    list = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [];
+  } catch { /* not supported */ }
+  if (list.length === 0) {
+    list = [
+      'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+      'America/Anchorage', 'Pacific/Honolulu', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+      'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney',
+    ];
+  }
+  const set = new Set(list);
+  set.add('UTC');
+  set.add(detected);
+  return [...set].sort();
+}
 
 export default function Settings() {
   const [code, setCode] = useState('');
@@ -9,15 +29,27 @@ export default function Settings() {
   const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const detectedTz = useMemo(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+  }, []);
+  const tzOptions = useMemo(() => timezoneOptions(detectedTz), [detectedTz]);
+  const [tz, setTz] = useState('');
+  const [tzSaving, setTzSaving] = useState(false);
+  const [tzSaved, setTzSaved] = useState(false);
+
   const refresh = useCallback(async () => {
-    const [codeRes, devicesRes] = await Promise.all([
+    const [codeRes, devicesRes, tzRes] = await Promise.all([
       api.get('/users/household-code'),
       api.get('/auth/devices'),
+      api.get('/users/timezone'),
     ]);
     setCode(codeRes.data.householdCode || '');
     setDevices(devicesRes.data);
+    // Treat the UTC default as "unset" and prefill the browser-detected zone.
+    const saved = tzRes.data.timezone as string;
+    setTz(saved && saved !== 'UTC' ? saved : detectedTz);
     setLoading(false);
-  }, []);
+  }, [detectedTz]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -38,6 +70,18 @@ export default function Settings() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch { /* clipboard unavailable */ }
+  };
+
+  const saveTz = async () => {
+    setTzSaving(true);
+    setTzSaved(false);
+    try {
+      await api.put('/users/timezone', { timezone: tz });
+      setTzSaved(true);
+      setTimeout(() => setTzSaved(false), 1500);
+    } finally {
+      setTzSaving(false);
+    }
   };
 
   const revoke = async (id: string) => {
@@ -72,6 +116,29 @@ export default function Settings() {
           >
             {rotating ? 'Generating…' : 'Generate a new code'}
           </button>
+        </section>
+
+        <section className="card shadow-sm p-5 space-y-3">
+          <h2 className="text-lg font-bold text-ink-900">Time zone</h2>
+          <p className="text-sm text-ink-500">
+            Used to decide when recurring chores are due in your house. A daily chore becomes available
+            at the start of each day in this zone.
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              value={tz}
+              onChange={e => setTz(e.target.value)}
+              className="input max-w-xs"
+              aria-label="Household time zone"
+            >
+              {tzOptions.map(z => (
+                <option key={z} value={z}>{z}</option>
+              ))}
+            </select>
+            <button onClick={saveTz} disabled={tzSaving} className="btn-ghost disabled:opacity-50">
+              {tzSaving ? 'Saving…' : tzSaved ? 'Saved!' : 'Save'}
+            </button>
+          </div>
         </section>
 
         <section className="card shadow-sm p-5 space-y-3">

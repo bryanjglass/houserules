@@ -9,6 +9,9 @@ datasource db {
 
 // role: "PARENT" | "CHILD"
 // householdCode: random per-parent code that gates the public child lookup (parents only)
+// timezone: IANA name (e.g. "America/Chicago") for the household; meaningful on the
+//   parent row, inherited by children via parentId. Source of truth for all
+//   calendar-day decisions (recurring generation + future-completion guard).
 // pinHash: bcrypt hash of a child's 4-digit PIN (children only)
 // pinFailedAttempts / pinLockedUntil: per-child PIN lockout state
 model User {
@@ -16,6 +19,7 @@ model User {
   name              String
   email             String?   @unique
   householdCode     String?   @unique
+  timezone          String    @default("UTC")
   pinHash           String?
   pinFailedAttempts Int       @default(0)
   pinLockedUntil    DateTime?

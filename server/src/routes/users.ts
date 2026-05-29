@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { publicLimiter } from '../middleware/rateLimit.js';
 import { generateHouseholdCode } from '../lib/codes.js';
+import { isValidTimeZone } from '../lib/tz.js';
 
 const router = Router();
 
@@ -52,6 +53,25 @@ router.post('/household-code/rotate', requireRole('PARENT'), async (req, res) =>
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// Read the household timezone for the current user (the parent's own zone, or a
+// child's via their parentId). Defaults to UTC if somehow unset.
+router.get('/timezone', async (req, res) => {
+  const parentId = req.user!.role === 'PARENT' ? req.user!.id : req.user!.parentId;
+  if (!parentId) return res.json({ timezone: 'UTC' });
+  const parent = await prisma.user.findUnique({ where: { id: parentId }, select: { timezone: true } });
+  res.json({ timezone: parent?.timezone || 'UTC' });
+});
+
+// Update the household timezone (parent only). Must be a valid IANA zone name.
+router.put('/timezone', requireRole('PARENT'), async (req, res) => {
+  const { timezone } = req.body;
+  if (typeof timezone !== 'string' || !isValidTimeZone(timezone)) {
+    return res.status(400).json({ error: 'A valid IANA timezone is required' });
+  }
+  await prisma.user.update({ where: { id: req.user!.id }, data: { timezone } });
+  res.json({ timezone });
 });
 
 // List children of the logged-in parent

@@ -8,10 +8,17 @@ import type { TaskView } from '../types/models';
 
 // Map a task to a design status pill. Pending/rejected tasks become Overdue / Due Soon
 // / To Do based on their due date; completed/approved get their own pills.
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 function statusPill(task: TaskView): { label: string; cls: string } {
   if (task.status === 'COMPLETED') return { label: 'Waiting', cls: 'badge-due' };
   if (task.status === 'APPROVED') return { label: 'Done', cls: 'badge-ok' };
   if (task.status === 'REJECTED') return { label: 'Needs redo', cls: 'badge-over' };
+
+  // An upcoming recurring tip is visible but not completable until its day.
+  if (task.upcoming && task.dueDate) return { label: `Available ${shortDate(task.dueDate)}`, cls: 'badge-ok' };
 
   const due = task.dueDate ? new Date(task.dueDate) : null;
   if (due) {
@@ -86,12 +93,13 @@ export default function TaskCard({
   const isOpenGrab = task.isUpForGrabs && !task.assignedToId;
   const childCanGrab = role === 'CHILD' && isOpenGrab && !task.isPerUnit;
   const childCanLog = role === 'CHILD' && isPerUnitDef;
-  const childCanAct = role === 'CHILD' && !isOpenGrab && !task.isPerUnit && (task.status === 'PENDING' || task.status === 'REJECTED');
+  // An upcoming recurring tip can't be completed until its day (server-enforced).
+  const childCanAct = role === 'CHILD' && !isOpenGrab && !task.isPerUnit && !task.upcoming && (task.status === 'PENDING' || task.status === 'REJECTED');
   const parentCanReview = role === 'PARENT' && task.status === 'COMPLETED';
   // A parent can mark an assigned chore done on the child's behalf (per-unit
   // completions have their own log flow, so they're excluded).
   const parentCanMarkDone =
-    role === 'PARENT' && !!task.assignedToId && !task.isPerUnit &&
+    role === 'PARENT' && !!task.assignedToId && !task.isPerUnit && !task.upcoming &&
     (task.status === 'PENDING' || task.status === 'REJECTED');
   // Editing is open on any owned task that isn't already credited.
   const parentCanEdit = role === 'PARENT' && task.status !== 'APPROVED';

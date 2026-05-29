@@ -182,6 +182,12 @@ Rounded-full pill, 11.5/700, padding 4×10px. One per task.
 - Border 1px `line`, radius 14, padding 12.
 - Title 14/700, meta 11.5/600 `ink-400`.
 - Amount 14/800 `ink-900`. Badge sits below the amount, right-aligned.
+- **Status badges:** `Due Soon`/`Waiting` = `badge-due` (amber); `Overdue`/`Needs redo`
+  = `badge-over` (rose); `Done` = `badge-ok` (money); `To Do` = `badge-todo` (brand).
+- **Upcoming tip:** a recurring occurrence whose due day is still in the future (the
+  next "tip") shows an `Available <Mon D>` badge in `badge-ok` (money — the §1
+  "Available" token) and **hides its complete/mark-done action** until its day. It
+  stays editable. Distinct from `Overdue` (rose) so a future chore never reads as late.
 
 ### Stat tile
 
@@ -255,6 +261,14 @@ the design spec doc (A1–F4).
 - **Recent Earnings** list — pet thumb + title + date + amount (always `money-600` with `+` sign)
 - **Savings Goal** — pet thumb + title + target + gradient progress bar (teal → brand) + saved / %
 - Bottom: tab bar, Wallet active
+
+### Screen 7 — Parent Settings (Login & Security)
+
+- Card sections, each `card shadow-sm p-5`: **House code** (mono code + Copy / regenerate),
+  **Time zone**, **Trusted devices**.
+- **Time zone**: a native `select` (`input` style, max-w-xs) of IANA zones + a `btn-ghost`
+  Save that confirms with "Saved!". Defaults to the browser-detected zone when the household
+  is still on the `UTC` default. Drives when recurring chores become due.
 
 ---
 
