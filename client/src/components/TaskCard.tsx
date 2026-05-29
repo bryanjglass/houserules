@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Thumb from './Thumb';
 import { formatCents } from '../lib/money';
@@ -46,10 +47,12 @@ export default function TaskCard({
   const isPerUnitDef = !!task.isPerUnit && task.isUpForGrabs && !task.assignedToId;
   const isPerUnitCompletion = !!task.isPerUnit && !!task.assignedToId;
 
+  const navigate = useNavigate();
   const [logQty, setLogQty] = useState('1');
   const [reviewQty, setReviewQty] = useState(String(task.quantity ?? 1));
 
   const handleMarkDone = async () => { await api.put(`/tasks/${task.id}`, {}); onUpdate(); };
+  const handleParentComplete = async () => { await api.post(`/tasks/${task.id}/complete`); onUpdate(); };
   const handleApprove = async () => {
     await api.post(`/tasks/${task.id}/approve`, isPerUnitCompletion ? { quantity: Number(reviewQty) } : {});
     onUpdate();
@@ -85,6 +88,13 @@ export default function TaskCard({
   const childCanLog = role === 'CHILD' && isPerUnitDef;
   const childCanAct = role === 'CHILD' && !isOpenGrab && !task.isPerUnit && (task.status === 'PENDING' || task.status === 'REJECTED');
   const parentCanReview = role === 'PARENT' && task.status === 'COMPLETED';
+  // A parent can mark an assigned chore done on the child's behalf (per-unit
+  // completions have their own log flow, so they're excluded).
+  const parentCanMarkDone =
+    role === 'PARENT' && !!task.assignedToId && !task.isPerUnit &&
+    (task.status === 'PENDING' || task.status === 'REJECTED');
+  // Editing is open on any owned task that isn't already credited.
+  const parentCanEdit = role === 'PARENT' && task.status !== 'APPROVED';
   const hasActions = childCanGrab || childCanLog || childCanAct || parentCanReview || role === 'PARENT';
 
   return (
@@ -181,6 +191,23 @@ export default function TaskCard({
                 Reject
               </button>
             </>
+          )}
+          {parentCanMarkDone && (
+            <button
+              onClick={handleParentComplete}
+              className="flex-1 bg-brand-50 text-brand text-[14px] font-bold py-2 rounded-[14px] hover:brightness-95 active:scale-[0.98] transition"
+            >
+              Mark Done
+            </button>
+          )}
+          {parentCanEdit && (
+            <button
+              onClick={() => navigate(`/tasks/${task.id}/edit`)}
+              className="text-ink-400 hover:text-brand text-[13px] font-semibold px-3 py-2 transition"
+              title="Edit task"
+            >
+              Edit
+            </button>
           )}
           {role === 'PARENT' && (
             <button
