@@ -76,6 +76,50 @@ component patterns.
 5. Keep DESIGN.md and the spec doc in sync when you make design changes.
    Updating one without the other creates drift.
 
+## Android Build
+
+The Android app is a Capacitor shell that loads the web app from the production Railway server (Server URL mode). No client code changes are needed — `npm run cap:sync` is sufficient after any Capacitor config change.
+
+**Prerequisites (one-time, not needed for web development):**
+- Android Studio (latest stable)
+- JDK 17 (bundled with Android Studio, or install separately)
+- Android SDK platform and build tools (installed via Android Studio's SDK Manager)
+
+**Environment variable:**
+
+| Variable | Value | When |
+|---|---|---|
+| `CAPACITOR_SERVER_URL` | `https://your-app.up.railway.app` | Production build (default) |
+| `CAPACITOR_SERVER_URL` | `http://10.0.2.2:3001` | Android emulator → local server |
+
+Update the default placeholder in `capacitor.config.ts` once the Railway URL is confirmed.
+
+**Standard workflow:**
+
+```bash
+# After any capacitor.config.ts change:
+npm run cap:sync          # copies config into android/, does NOT need a client build
+
+# Open in Android Studio (to build APK or run on device/emulator):
+npm run cap:open          # opens the android/ project in Android Studio
+
+# Or build from the command line (requires Android Studio + SDK on PATH):
+npm run cap:build         # npx cap build android
+```
+
+**Regenerating icons/splash after asset changes:**
+
+Source images live in `assets/` at the repo root (`icon-only.png` 1024×1024, `splash.png` 2732×2732). After replacing them, regenerate Android assets:
+
+```bash
+npx @capacitor/assets generate --android
+```
+
+**Notes:**
+- Android build outputs (`android/app/build/`, `android/.gradle/`) are gitignored.
+- The `android/` Gradle project is committed to the repo; any developer with Android Studio can build without running `npx cap add android`.
+- Web deployments to Railway automatically update what the Android app loads — no app store release needed for client-only changes.
+
 ## OpenSpec
 
 This repo uses OpenSpec (`openspec/`, `schema: spec-driven`) for spec-driven change management. Use the `openspec-*` / `opsx:*` skills to propose, apply, and archive changes rather than editing `openspec/` files by hand.

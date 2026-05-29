@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MilkMoney</string>
+    <string name="title_activity_main">MilkMoney</string>
+    <string name="package_name">com.milkmoney.app</string>
+    <string name="custom_url_scheme">com.milkmoney.app</string>
+</resources>

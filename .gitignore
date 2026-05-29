@@ -7,3 +7,10 @@ server/.env
 client/dist/
 .DS_Store
 /.idea/
+
+# Android build outputs
+android/app/build/
+android/.gradle/
+android/build/
+*.apk
+*.aab
