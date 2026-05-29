@@ -36,6 +36,7 @@ export default function TaskManager() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrence, setRecurrence] = useState<Recurrence>('WEEKLY');
   const [weeklyDays, setWeeklyDays] = useState<number[]>([]);
+  const [catchUp, setCatchUp] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -83,6 +84,7 @@ export default function TaskManager() {
         isRecurring,
         recurrence: isRecurring ? recurrence : undefined,
         weeklyDays: isRecurring && recurrence === 'WEEKLY' && weeklyDays.length ? weeklyDays : undefined,
+        catchUp: isRecurring && !isUpForGrabs && assignedToId ? catchUp : undefined,
       });
       navigate(!isUpForGrabs && assignedToId ? `/children/${assignedToId}` : '/');
     } catch (err: any) {
@@ -275,6 +277,26 @@ export default function TaskManager() {
                 })}
               </div>
               <p className="text-[11px] text-ink-400 mt-1">Leave empty to repeat every 7 days.</p>
+            </div>
+          )}
+
+          {/* Catch-up — only for a recurring chore assigned to a specific kid.
+              Missed days pile up as separate tasks the kid can clear anytime. */}
+          {isRecurring && !isUpForGrabs && assignedToId && (
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={catchUp}
+                onClick={() => setCatchUp(!catchUp)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${catchUp ? 'bg-brand' : 'bg-ink-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${catchUp ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+              <div>
+                <span className="text-[13px] font-bold text-ink-700">Let missed days stack up</span>
+                <p className="text-[11px] text-ink-400">Each skipped day becomes its own task to catch up on — no waiting for approval.</p>
+              </div>
             </div>
           )}
 

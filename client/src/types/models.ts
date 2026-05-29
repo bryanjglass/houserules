@@ -26,6 +26,7 @@ export interface TaskView {
   isRecurring: boolean;
   recurrence: Recurrence | null;
   weeklyDays?: string | null;
+  catchUp?: boolean;
   templateId?: string | null;
   createdAt?: string;
   assignedTo?: { id: string; name: string } | null;

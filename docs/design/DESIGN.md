@@ -224,6 +224,7 @@ the design spec doc (A1–F4).
 - Description (optional)
 - 2-col row: Reward (with $ chip) + Due Date (with calendar icon)
 - Assign To: 3-col grid — Abby / Owen / "Up for grabs" (selected = `brand-50` bg + `brand` border + star icon)
+- Toggles (switch: on = `bg-brand`, off = `bg-ink-300`): "Recurring task", and — when recurring + assigned to a kid + not up-for-grabs — "Let missed days stack up" (catch-up), with helper subtext in `ink-400`. Hidden otherwise.
 - Category pills: Home (selected = brand fill) · Pets · Chores · Other
 
 ### Screen 4 — Kid Login
