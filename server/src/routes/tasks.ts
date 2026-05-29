@@ -9,6 +9,14 @@ const router = Router();
 
 router.use(requireAuth);
 
+// How far back catch-up backfill reaches. Occurrences scheduled before
+// (now - CATCHUP_WINDOW_DAYS) are never materialized, so a long-ignored daily
+// chore can't explode into hundreds of overdue rows. Tune here, not inline.
+const CATCHUP_WINDOW_DAYS = 14;
+
+// Upper bound on schedule steps walked per chain, mirroring projectOccurrences.
+const CATCHUP_MAX_STEPS = 400;
+
 function parseWeeklyDays(weeklyDays: string | null | undefined): number[] {
   if (!weeklyDays) return [];
   return [...new Set(
@@ -62,6 +70,98 @@ function projectOccurrences(task: Task, start: Date, end: Date): Date[] {
   return occurrences;
 }
 
+// Backfill missed occurrences of opt-in catch-up recurring tasks as independent
+// PENDING instances. The stack has no job runner, so generation runs lazily on
+// read: for each catch-up chain visible under `where`, walk the recurrence
+// schedule forward from the chain's latest due date (bounded by
+// CATCHUP_MAX_STEPS) and materialize each scheduled date in
+// [now - CATCHUP_WINDOW_DAYS, now] that has no instance yet. Idempotent across
+// reads; each created row is a normal task the child completes individually and
+// the parent approves separately (approval credits but does not spawn — see
+// the !catchUp guard in /approve). Non-catch-up, up-for-grabs, and due-date-less
+// recurring tasks are excluded and keep the single-tip, approve-time spawn.
+async function backfillCatchUpOccurrences(where: Prisma.TaskWhereInput): Promise<void> {
+  const candidates = await prisma.task.findMany({
+    where: {
+      AND: [
+        where,
+        {
+          isRecurring: true,
+          catchUp: true,
+          isUpForGrabs: false,
+          assignedToId: { not: null },
+          dueDate: { not: null },
+          recurrence: { not: null },
+        },
+      ],
+    },
+  });
+  if (candidates.length === 0) return;
+
+  // Group every visible instance by its chain root. The representative row holds
+  // the chain's schedule/settings; `dues` is the set of dates already present,
+  // used to skip occurrences that exist. All instances of a catch-up chain stay
+  // assigned to the same child, so they all fall under `where` and are seen here.
+  const byRoot = new Map<string, { rep: Task; dues: Set<number> }>();
+  for (const c of candidates) {
+    const root = c.templateId || c.id;
+    let entry = byRoot.get(root);
+    if (!entry) {
+      entry = { rep: c, dues: new Set() };
+      byRoot.set(root, entry);
+    }
+    if (c.dueDate) {
+      entry.dues.add(new Date(c.dueDate).getTime());
+      if (entry.rep.dueDate && c.dueDate > entry.rep.dueDate) entry.rep = c;
+    }
+  }
+
+  const now = new Date();
+  const windowStart = new Date(now);
+  windowStart.setDate(windowStart.getDate() - CATCHUP_WINDOW_DAYS);
+
+  for (const [root, { rep, dues }] of byRoot) {
+    const anchorMs = Math.max(...dues);
+    let cursor = new Date(anchorMs);
+    const toCreate: Date[] = [];
+    for (let i = 0; i < CATCHUP_MAX_STEPS; i++) {
+      cursor = nextDueDate(cursor, rep.recurrence, rep.weeklyDays);
+      if (cursor > now) break;
+      if (cursor >= windowStart && !dues.has(cursor.getTime())) {
+        toCreate.push(new Date(cursor));
+      }
+    }
+    if (toCreate.length === 0) continue;
+
+    // Re-check existence inside the transaction immediately before each insert so
+    // two concurrent reads can't both materialize the same (root, dueDate).
+    await prisma.$transaction(async (tx) => {
+      for (const due of toCreate) {
+        const exists = await tx.task.count({
+          where: { dueDate: due, OR: [{ id: root }, { templateId: root }] },
+        });
+        if (exists > 0) continue;
+        await tx.task.create({
+          data: {
+            title: rep.title,
+            description: rep.description,
+            dollarAmount: rep.dollarAmount,
+            assignedToId: rep.assignedToId,
+            createdById: rep.createdById,
+            isUpForGrabs: false,
+            dueDate: due,
+            isRecurring: true,
+            recurrence: rep.recurrence,
+            weeklyDays: rep.weeklyDays,
+            catchUp: true,
+            templateId: root,
+          },
+        });
+      }
+    });
+  }
+}
+
 // GET /api/tasks
 // Parent: all tasks for their children
 // Child: their own tasks
@@ -71,24 +171,29 @@ router.get('/', async (req, res) => {
   if (user.role === 'PARENT') {
     const children = await prisma.user.findMany({ where: { parentId: user.id }, select: { id: true } });
     const childIds = children.map(c => c.id);
+    // Children's tasks, plus the parent's own up-for-grabs chores (open chores
+    // have no assignee, so they'd be missed by the assignedToId filter alone).
+    const where = { OR: [{ assignedToId: { in: childIds } }, { createdById: user.id }] };
+    // Materialize any missed catch-up occurrences before reading so they appear.
+    await backfillCatchUpOccurrences(where);
     const tasks = await prisma.task.findMany({
-      // Children's tasks, plus the parent's own up-for-grabs chores (open chores
-      // have no assignee, so they'd be missed by the assignedToId filter alone).
-      where: { OR: [{ assignedToId: { in: childIds } }, { createdById: user.id }] },
+      where,
       include: { assignedTo: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
     return res.json(tasks);
   }
 
+  // The child's own tasks, plus the household's unclaimed up-for-grabs pool.
+  const where = {
+    OR: [
+      { assignedToId: user.id },
+      { isUpForGrabs: true, assignedToId: null, createdById: user.parentId as string },
+    ],
+  };
+  await backfillCatchUpOccurrences(where);
   const tasks = await prisma.task.findMany({
-    // The child's own tasks, plus the household's unclaimed up-for-grabs pool.
-    where: {
-      OR: [
-        { assignedToId: user.id },
-        { isUpForGrabs: true, assignedToId: null, createdById: user.parentId as string },
-      ],
-    },
+    where,
     orderBy: { createdAt: 'desc' },
   });
   res.json(tasks);
@@ -187,7 +292,7 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/tasks — parent creates task
 router.post('/', requireRole('PARENT'), async (req, res) => {
-  const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence, weeklyDays, isUpForGrabs, isPerUnit, unitReward } = req.body;
+  const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence, weeklyDays, isUpForGrabs, isPerUnit, unitReward, catchUp } = req.body;
 
   // Per-unit chore: an open, per-item-priced definition that lives in the
   // household pool forever. No assignee, never recurring, dollarAmount stays
@@ -239,6 +344,8 @@ router.post('/', requireRole('PARENT'), async (req, res) => {
       isRecurring: Boolean(isRecurring),
       recurrence: isRecurring ? recurrence : null,
       weeklyDays: normalizedWeeklyDays.length ? normalizedWeeklyDays.join(',') : null,
+      // catch-up only applies to a recurring, assigned, non-up-for-grabs chore.
+      catchUp: Boolean(isRecurring) && !upForGrabs && Boolean(assignedToId) && Boolean(catchUp),
     },
   });
   res.status(201).json(task);
@@ -328,7 +435,7 @@ router.put('/:id', async (req, res) => {
   // the transaction record and must not change.
   if (task.status === 'APPROVED') return res.status(400).json({ error: 'Approved tasks cannot be edited' });
 
-  const { title, description, dollarAmount, dueDate, assignedToId, isRecurring, recurrence, weeklyDays, isUpForGrabs } = req.body;
+  const { title, description, dollarAmount, dueDate, assignedToId, isRecurring, recurrence, weeklyDays, isUpForGrabs, catchUp } = req.body;
 
   const data: Prisma.TaskUpdateInput = {
     ...(title && { title }),
@@ -351,6 +458,17 @@ router.put('/:id', async (req, res) => {
         ? parseWeeklyDays(Array.isArray(weeklyDays) ? weeklyDays.join(',') : weeklyDays)
         : [];
     data.weeklyDays = normalizedWeeklyDays.length ? normalizedWeeklyDays.join(',') : null;
+  }
+
+  // catch-up is only meaningful for a recurring, assigned, non-up-for-grabs chore.
+  // Recompute whenever recurrence, assignment, up-for-grabs, or the flag itself
+  // changes; turning recurrence off or making the chore up-for-grabs clears it.
+  if (catchUp !== undefined || isRecurring !== undefined || isUpForGrabs !== undefined || assignedToId !== undefined) {
+    const effectiveRecurring = isRecurring !== undefined ? Boolean(isRecurring) : task.isRecurring;
+    const effectiveUpForGrabs = isUpForGrabs !== undefined ? Boolean(isUpForGrabs) : task.isUpForGrabs;
+    const effectiveAssignee = assignedToId ?? task.assignedToId;
+    const wantCatchUp = catchUp !== undefined ? Boolean(catchUp) : task.catchUp;
+    data.catchUp = effectiveRecurring && !effectiveUpForGrabs && !!effectiveAssignee && wantCatchUp;
   }
 
   const updated = await prisma.task.update({ where: { id: task.id }, data });
@@ -433,8 +551,11 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
       });
     }
 
-    // Spawn next recurring instance
-    if (task.isRecurring && task.recurrence) {
+    // Spawn next recurring instance. Catch-up tasks are excluded: their
+    // occurrences are generated from the schedule on read (see
+    // backfillCatchUpOccurrences), so spawning here too would double-generate.
+    // They still credit the allowance per approved occurrence above.
+    if (task.isRecurring && task.recurrence && !task.catchUp) {
       const templateId = task.templateId || task.id;
       await tx.task.create({
         data: {

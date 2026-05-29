@@ -93,6 +93,10 @@ model Task {
   isRecurring Boolean @default(false)
   recurrence  String?
   weeklyDays  String?
+  // catchUp: when true on a child-assigned recurring task, missed occurrences are
+  // backfilled as independent PENDING instances on read (see routes/tasks.ts).
+  // Meaningful only for recurring, assigned, non-up-for-grabs tasks; false otherwise.
+  catchUp     Boolean @default(false)
   templateId  String?
   template    Task?   @relation("Instances", fields: [templateId], references: [id])
   instances   Task[]  @relation("Instances")
