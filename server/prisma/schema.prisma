@@ -37,6 +37,7 @@ model User {
   rememberedOn   TrustedDevice[] @relation("RememberedChildren")
   savingsGoals   SavingsGoal[]   @relation("ChildGoals")
   createdGoals   SavingsGoal[]   @relation("CreatedGoals")
+  pushTokens     PushToken[]
 
   @@index([parentId])
 }
@@ -154,4 +155,20 @@ model SavingsGoal {
 
   @@index([childId])
   @@index([createdById])
+}
+
+// platform: "android" (room for "ios"/"web" later)
+// token: the FCM registration token issued to the device by Google Play Services.
+// One user can have multiple tokens (phone + tablet). Upserted on token value;
+// the userId is reassigned if a shared device re-registers after a different login.
+model PushToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  platform   String
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@index([userId])
 }

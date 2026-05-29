@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import api, { setUnauthorizedHandler } from '../api/client';
 import type { AuthUser } from '../types/domain';
 
@@ -39,6 +41,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(r => setUser(r.data))
       .catch(() => setUser(null));
   }, []);
+
+  // Register for push notifications on native (Android) when a user is authenticated.
+  // Skipped entirely on web — Capacitor.isNativePlatform() is false in a browser.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !user) return;
+
+    let active = true;
+
+    PushNotifications.requestPermissions().then((result) => {
+      if (!active || result.receive !== 'granted') return;
+
+      PushNotifications.addListener('registration', (token) => {
+        api.post('/notifications/register', { token: token.value, platform: 'android' })
+          .catch((err) => console.error('[push] token registration failed:', err));
+      });
+
+      PushNotifications.addListener('registrationError', (err) => {
+        console.error('[push] registration error:', err);
+      });
+
+      PushNotifications.register();
+    });
+
+    return () => {
+      active = false;
+      PushNotifications.removeAllListeners();
+    };
+  }, [user?.id]);
 
   const login = async (credentials: Credentials) => {
     const r = await api.post('/auth/login', credentials);
