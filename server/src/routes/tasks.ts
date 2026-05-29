@@ -1,9 +1,21 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import type { Task } from '@prisma/client';
+import type { AuthUser } from '../types/domain.js';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import {
+  familyToday,
+  dueDay,
+  addDays,
+  addMonths,
+  dayOfWeek,
+  compareDays,
+  isFutureDay,
+  stampLocalNoon,
+  type CalDay,
+} from '../lib/tz.js';
 
 const router = Router();
 
@@ -27,43 +39,75 @@ function parseWeeklyDays(weeklyDays: string | null | undefined): number[] {
   )].sort((a, b) => a - b);
 }
 
+// A stable per-day key for de-duping occurrences regardless of stored time.
+function dayKey(day: CalDay): string {
+  return `${day.y}-${day.m}-${day.d}`;
+}
+
+// The next scheduled occurrence after `currentDue`, computed in CALENDAR DAYS in
+// the household timezone and stamped at local noon so it can't slip across a day
+// boundary under DST/offset. Reuses the same weekly/selected-day + monthly rules.
 function nextDueDate(
   currentDue: Date | string | null,
   recurrence: string | null,
-  weeklyDays: string | null | undefined
+  weeklyDays: string | null | undefined,
+  tz: string
 ): Date {
-  const base = currentDue ? new Date(currentDue) : new Date();
+  const baseDay = currentDue ? dueDay(currentDue, tz) : familyToday(tz);
+  let next: CalDay;
   switch (recurrence) {
-    case 'DAILY':   base.setDate(base.getDate() + 1); break;
+    case 'DAILY':
+      next = addDays(baseDay, 1);
+      break;
     case 'WEEKLY': {
       const days = parseWeeklyDays(weeklyDays);
       if (days.length === 0) {
-        base.setDate(base.getDate() + 7);
+        next = addDays(baseDay, 7);
         break;
       }
       const daySet = new Set(days);
+      let cur = baseDay;
       for (let i = 1; i <= 7; i++) {
-        base.setDate(base.getDate() + 1);
-        if (daySet.has(base.getDay())) break;
+        cur = addDays(cur, 1);
+        if (daySet.has(dayOfWeek(cur))) break;
       }
+      next = cur;
       break;
     }
-    case 'MONTHLY': base.setMonth(base.getMonth() + 1); break;
+    case 'MONTHLY':
+      next = addMonths(baseDay, 1);
+      break;
+    default:
+      next = baseDay;
   }
-  return base;
+  return stampLocalNoon(next, tz);
+}
+
+// Resolve the household timezone for a request user (parent's own zone, or a
+// child's via parentId) or for a task (via its creator — always the parent).
+async function tzForUser(user: AuthUser): Promise<string> {
+  const parentId = user.role === 'PARENT' ? user.id : user.parentId;
+  if (!parentId) return 'UTC';
+  const p = await prisma.user.findUnique({ where: { id: parentId }, select: { timezone: true } });
+  return p?.timezone || 'UTC';
+}
+
+async function tzForTask(task: Task): Promise<string> {
+  const p = await prisma.user.findUnique({ where: { id: task.createdById }, select: { timezone: true } });
+  return p?.timezone || 'UTC';
 }
 
 // Project future occurrences of a recurring task within [start, end].
 // Walks forward from the task's due date using the same recurrence rules as
 // instance spawning. The due date itself is the materialized instance and is
 // NOT emitted here. Bounded to guard against runaway daily expansion.
-function projectOccurrences(task: Task, start: Date, end: Date): Date[] {
+function projectOccurrences(task: Task, start: Date, end: Date, tz: string): Date[] {
   if (!task.isRecurring || !task.recurrence || !task.dueDate) return [];
   const occurrences: Date[] = [];
   let cursor = new Date(task.dueDate);
   const MAX_STEPS = 400;
   for (let i = 0; i < MAX_STEPS; i++) {
-    cursor = nextDueDate(cursor, task.recurrence, task.weeklyDays);
+    cursor = nextDueDate(cursor, task.recurrence, task.weeklyDays, tz);
     if (cursor > end) break;
     if (cursor >= start) occurrences.push(new Date(cursor));
   }
@@ -80,7 +124,7 @@ function projectOccurrences(task: Task, start: Date, end: Date): Date[] {
 // the parent approves separately (approval credits but does not spawn — see
 // the !catchUp guard in /approve). Non-catch-up, up-for-grabs, and due-date-less
 // recurring tasks are excluded and keep the single-tip, approve-time spawn.
-async function backfillCatchUpOccurrences(where: Prisma.TaskWhereInput): Promise<void> {
+async function backfillCatchUpOccurrences(where: Prisma.TaskWhereInput, tz: string): Promise<void> {
   const candidates = await prisma.task.findMany({
     where: {
       AND: [
@@ -99,42 +143,46 @@ async function backfillCatchUpOccurrences(where: Prisma.TaskWhereInput): Promise
   if (candidates.length === 0) return;
 
   // Group every visible instance by its chain root. The representative row holds
-  // the chain's schedule/settings; `dues` is the set of dates already present,
-  // used to skip occurrences that exist. All instances of a catch-up chain stay
-  // assigned to the same child, so they all fall under `where` and are seen here.
-  const byRoot = new Map<string, { rep: Task; dues: Set<number> }>();
+  // the chain's schedule/settings; `dayKeys` is the set of calendar days already
+  // present (compared by day, not timestamp, so pre-existing rows not stamped at
+  // local noon still de-dupe). All instances of a catch-up chain stay assigned to
+  // the same child, so they all fall under `where` and are seen here.
+  const byRoot = new Map<string, { rep: Task; dayKeys: Set<string>; maxDue: Date }>();
   for (const c of candidates) {
+    if (!c.dueDate) continue;
     const root = c.templateId || c.id;
+    const due = new Date(c.dueDate);
     let entry = byRoot.get(root);
     if (!entry) {
-      entry = { rep: c, dues: new Set() };
+      entry = { rep: c, dayKeys: new Set(), maxDue: due };
       byRoot.set(root, entry);
     }
-    if (c.dueDate) {
-      entry.dues.add(new Date(c.dueDate).getTime());
-      if (entry.rep.dueDate && c.dueDate > entry.rep.dueDate) entry.rep = c;
+    entry.dayKeys.add(dayKey(dueDay(due, tz)));
+    if (due > entry.maxDue) {
+      entry.maxDue = due;
+      entry.rep = c;
     }
   }
 
-  const now = new Date();
-  const windowStart = new Date(now);
-  windowStart.setDate(windowStart.getDate() - CATCHUP_WINDOW_DAYS);
+  const today = familyToday(tz);
+  const windowStartDay = addDays(today, -CATCHUP_WINDOW_DAYS);
 
-  for (const [root, { rep, dues }] of byRoot) {
-    const anchorMs = Math.max(...dues);
-    let cursor = new Date(anchorMs);
+  for (const [root, { rep, dayKeys, maxDue }] of byRoot) {
+    let cursor = new Date(maxDue);
     const toCreate: Date[] = [];
     for (let i = 0; i < CATCHUP_MAX_STEPS; i++) {
-      cursor = nextDueDate(cursor, rep.recurrence, rep.weeklyDays);
-      if (cursor > now) break;
-      if (cursor >= windowStart && !dues.has(cursor.getTime())) {
+      cursor = nextDueDate(cursor, rep.recurrence, rep.weeklyDays, tz);
+      const cd = dueDay(cursor, tz);
+      if (compareDays(cd, today) > 0) break; // never backfill future days
+      if (compareDays(cd, windowStartDay) >= 0 && !dayKeys.has(dayKey(cd))) {
         toCreate.push(new Date(cursor));
+        dayKeys.add(dayKey(cd));
       }
     }
     if (toCreate.length === 0) continue;
 
     // Re-check existence inside the transaction immediately before each insert so
-    // two concurrent reads can't both materialize the same (root, dueDate).
+    // two concurrent reads can't both materialize the same (root, day).
     await prisma.$transaction(async (tx) => {
       for (const due of toCreate) {
         const exists = await tx.task.count({
@@ -162,11 +210,94 @@ async function backfillCatchUpOccurrences(where: Prisma.TaskWhereInput): Promise
   }
 }
 
+// Ensure every assigned (non-up-for-grabs) recurring chain always has one live
+// instance, so the chore never disappears from the parent's lists and stays
+// editable once prior instances are completed/approved. When a chain has no
+// non-APPROVED instance, materialize the next occurrence after its latest due
+// day. That occurrence may be in the future (the "tip" the kid sees but can't
+// complete until its day — see the future-completion guard). Runs on read; this
+// replaces approve-time spawning for assigned recurring tasks. Up-for-grabs
+// recurring chores keep their approve-time reopen-to-pool spawn (their pool
+// instances aren't uniformly visible per requester, so a read-time tip is unsafe).
+async function ensureLiveTips(where: Prisma.TaskWhereInput, tz: string): Promise<void> {
+  const candidates = await prisma.task.findMany({
+    where: {
+      AND: [
+        where,
+        {
+          isRecurring: true,
+          isUpForGrabs: false,
+          assignedToId: { not: null },
+          dueDate: { not: null },
+          recurrence: { not: null },
+        },
+      ],
+    },
+  });
+  if (candidates.length === 0) return;
+
+  const byRoot = new Map<string, { rep: Task; hasLive: boolean; maxDue: Date; dayKeys: Set<string> }>();
+  for (const c of candidates) {
+    if (!c.dueDate) continue;
+    const root = c.templateId || c.id;
+    const due = new Date(c.dueDate);
+    let entry = byRoot.get(root);
+    if (!entry) {
+      entry = { rep: c, hasLive: false, maxDue: due, dayKeys: new Set() };
+      byRoot.set(root, entry);
+    }
+    entry.dayKeys.add(dayKey(dueDay(due, tz)));
+    if (c.status !== 'APPROVED') entry.hasLive = true;
+    if (due > entry.maxDue) {
+      entry.maxDue = due;
+      entry.rep = c;
+    }
+  }
+
+  for (const [root, { rep, hasLive, maxDue, dayKeys }] of byRoot) {
+    if (hasLive) continue; // a PENDING/COMPLETED/REJECTED instance already exists
+    const tipDue = nextDueDate(maxDue, rep.recurrence, rep.weeklyDays, tz);
+    if (dayKeys.has(dayKey(dueDay(tipDue, tz)))) continue;
+
+    await prisma.$transaction(async (tx) => {
+      const exists = await tx.task.count({
+        where: { dueDate: tipDue, OR: [{ id: root }, { templateId: root }] },
+      });
+      if (exists > 0) return;
+      await tx.task.create({
+        data: {
+          title: rep.title,
+          description: rep.description,
+          dollarAmount: rep.dollarAmount,
+          assignedToId: rep.assignedToId,
+          createdById: rep.createdById,
+          isUpForGrabs: false,
+          dueDate: tipDue,
+          isRecurring: true,
+          recurrence: rep.recurrence,
+          weeklyDays: rep.weeklyDays,
+          catchUp: rep.catchUp,
+          templateId: root,
+        },
+      });
+    });
+  }
+}
+
 // GET /api/tasks
 // Parent: all tasks for their children
 // Child: their own tasks
 router.get('/', async (req, res) => {
   const user = req.user!;
+  const tz = await tzForUser(user);
+
+  // Tag each task with `upcoming`: a recurring, assigned occurrence whose due day
+  // is still in the future. The client uses it to lock the complete action and
+  // show an "available later" state; the server guard (PUT, /complete) enforces it.
+  const withUpcoming = <T extends Task>(t: T) => ({
+    ...t,
+    upcoming: t.isRecurring && !t.isUpForGrabs && !!t.dueDate && isFutureDay(t.dueDate, tz),
+  });
 
   if (user.role === 'PARENT') {
     const children = await prisma.user.findMany({ where: { parentId: user.id }, select: { id: true } });
@@ -174,14 +305,16 @@ router.get('/', async (req, res) => {
     // Children's tasks, plus the parent's own up-for-grabs chores (open chores
     // have no assignee, so they'd be missed by the assignedToId filter alone).
     const where = { OR: [{ assignedToId: { in: childIds } }, { createdById: user.id }] };
-    // Materialize any missed catch-up occurrences before reading so they appear.
-    await backfillCatchUpOccurrences(where);
+    // Generate on read: backfill missed catch-up occurrences, then ensure every
+    // assigned recurring chain has a live tip so nothing disappears.
+    await backfillCatchUpOccurrences(where, tz);
+    await ensureLiveTips(where, tz);
     const tasks = await prisma.task.findMany({
       where,
       include: { assignedTo: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
-    return res.json(tasks);
+    return res.json(tasks.map(withUpcoming));
   }
 
   // The child's own tasks, plus the household's unclaimed up-for-grabs pool.
@@ -191,12 +324,13 @@ router.get('/', async (req, res) => {
       { isUpForGrabs: true, assignedToId: null, createdById: user.parentId as string },
     ],
   };
-  await backfillCatchUpOccurrences(where);
+  await backfillCatchUpOccurrences(where, tz);
+  await ensureLiveTips(where, tz);
   const tasks = await prisma.task.findMany({
     where,
     orderBy: { createdAt: 'desc' },
   });
-  res.json(tasks);
+  res.json(tasks.map(withUpcoming));
 });
 
 // GET /api/tasks/calendar?start=&end=
@@ -216,6 +350,7 @@ router.get('/calendar', async (req, res) => {
     return res.status(400).json({ error: 'start must not be after end' });
   }
 
+  const tz = await tzForUser(user);
   const isParent = user.role === 'PARENT';
   let where: Prisma.TaskWhereInput;
   if (isParent) {
@@ -262,7 +397,7 @@ router.get('/calendar', async (req, res) => {
     // Approved instances already spawned their successor, so projecting from
     // them would duplicate the chain.
     if (task.isRecurring && task.status !== 'APPROVED') {
-      for (const date of projectOccurrences(task, startDate, endDate)) {
+      for (const date of projectOccurrences(task, startDate, endDate, tz)) {
         events.push({
           ...base,
           id: `${task.id}-proj-${date.toISOString()}`,
@@ -420,6 +555,10 @@ router.put('/:id', async (req, res) => {
     if (task.status !== 'PENDING' && task.status !== 'REJECTED') {
       return res.status(400).json({ error: 'Task cannot be marked complete in its current state' });
     }
+    // A future recurring occurrence (the upcoming "tip") can't be completed early.
+    if (task.isRecurring && !task.isUpForGrabs && task.dueDate && isFutureDay(task.dueDate, await tzForTask(task))) {
+      return res.status(400).json({ error: "This isn't due yet — you can complete it on its day." });
+    }
     const updated = await prisma.task.update({
       where: { id: task.id },
       data: { status: 'COMPLETED', completedAt: new Date() },
@@ -488,6 +627,10 @@ router.post('/:id/complete', requireRole('PARENT'), async (req, res) => {
   if (task.status === 'APPROVED') return res.status(400).json({ error: 'Task is already approved' });
   // Idempotent: already awaiting approval, nothing to do.
   if (task.status === 'COMPLETED') return res.json(task);
+  // A future recurring occurrence (the upcoming "tip") can't be completed early.
+  if (task.isRecurring && !task.isUpForGrabs && task.dueDate && isFutureDay(task.dueDate, await tzForTask(task))) {
+    return res.status(400).json({ error: "This isn't due yet — it can be completed on its day." });
+  }
 
   const updated = await prisma.task.update({
     where: { id: task.id },
@@ -513,6 +656,7 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
       : task.quantity;
 
   const now = new Date();
+  const tz = await tzForTask(task);
   let conflict = false;
   await prisma.$transaction(async (tx) => {
     // Conditional flip closes the race between the status check above and here:
@@ -551,23 +695,22 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
       });
     }
 
-    // Spawn next recurring instance. Catch-up tasks are excluded: their
-    // occurrences are generated from the schedule on read (see
-    // backfillCatchUpOccurrences), so spawning here too would double-generate.
-    // They still credit the allowance per approved occurrence above.
-    if (task.isRecurring && task.recurrence && !task.catchUp) {
+    // Spawn next recurring instance — only for up-for-grabs recurring chores,
+    // which reopen to the household pool on approval. Assigned recurring tasks no
+    // longer spawn here: their next occurrence (the live "tip") is materialized on
+    // read by ensureLiveTips, so spawning here too would double-generate.
+    if (task.isRecurring && task.recurrence && task.isUpForGrabs) {
       const templateId = task.templateId || task.id;
       await tx.task.create({
         data: {
           title: task.title,
           description: task.description,
           dollarAmount: task.dollarAmount,
-          // Up-for-grabs chores reopen to the whole household; normal chores
-          // re-lock to the same child.
-          assignedToId: task.isUpForGrabs ? null : task.assignedToId,
-          isUpForGrabs: task.isUpForGrabs,
+          // Up-for-grabs chores reopen unassigned to the whole household.
+          assignedToId: null,
+          isUpForGrabs: true,
           createdById: req.user!.id,
-          dueDate: nextDueDate(task.dueDate, task.recurrence, task.weeklyDays),
+          dueDate: nextDueDate(task.dueDate, task.recurrence, task.weeklyDays, tz),
           isRecurring: true,
           recurrence: task.recurrence,
           weeklyDays: task.weeklyDays,

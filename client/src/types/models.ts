@@ -30,6 +30,9 @@ export interface TaskView {
   templateId?: string | null;
   createdAt?: string;
   assignedTo?: { id: string; name: string } | null;
+  // True for a recurring occurrence whose due day is still in the future (the
+  // upcoming "tip"): visible but not completable until its day. Server-computed.
+  upcoming?: boolean;
 }
 
 export interface Transaction {
