@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { Task } from '@prisma/client';
 import type { AuthUser } from '../types/domain.js';
 import { prisma } from '../lib/prisma.js';
+import { notifyUser } from '../lib/push.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import {
@@ -483,6 +484,12 @@ router.post('/', requireRole('PARENT'), async (req, res) => {
       catchUp: Boolean(isRecurring) && !upForGrabs && Boolean(assignedToId) && Boolean(catchUp),
     },
   });
+
+  // Notify the assigned child — skip for open up-for-grabs chores (no recipient yet).
+  if (task.assignedToId) {
+    notifyUser(task.assignedToId, { title: 'New chore', body: task.title });
+  }
+
   res.status(201).json(task);
 });
 
@@ -636,6 +643,9 @@ router.post('/:id/complete', requireRole('PARENT'), async (req, res) => {
     where: { id: task.id },
     data: { status: 'COMPLETED', completedAt: new Date() },
   });
+
+  notifyUser(task.createdById, { title: 'Chore done — needs approval', body: task.title });
+
   res.json(updated);
 });
 
@@ -721,6 +731,17 @@ router.post('/:id/approve', requireRole('PARENT'), async (req, res) => {
   });
 
   if (conflict) return res.status(409).json({ error: 'Task is not awaiting approval' });
+
+  if (task.assignedToId) {
+    const earned = task.isPerUnit && task.unitReward && effectiveQty
+      ? task.unitReward * effectiveQty
+      : task.dollarAmount;
+    const body = earned
+      ? `${task.title} — you earned $${(earned / 100).toFixed(2)}!`
+      : `${task.title} approved`;
+    notifyUser(task.assignedToId, { title: 'Chore approved! 🎉', body });
+  }
+
   res.json({ ok: true });
 });
 
@@ -734,6 +755,7 @@ router.post('/:id/reject', requireRole('PARENT'), async (req, res) => {
   // A rejected per-unit completion is discarded — the child re-logs a corrected
   // count from the still-open definition; there is no in-place edit path.
   if (task.isPerUnit) {
+    notifyUser(task.assignedToId, { title: 'Chore needs another look', body: task.title });
     await prisma.task.delete({ where: { id: task.id } });
     return res.json({ ok: true, deleted: true });
   }
@@ -744,6 +766,9 @@ router.post('/:id/reject', requireRole('PARENT'), async (req, res) => {
     where: { id: task.id },
     data: { status: 'PENDING', completedAt: null },
   });
+
+  notifyUser(task.assignedToId, { title: 'Chore needs another look', body: task.title });
+
   res.json(updated);
 });
 

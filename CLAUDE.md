@@ -85,14 +85,26 @@ The Android app is a Capacitor shell that loads the web app from the production 
 - JDK 17 (bundled with Android Studio, or install separately)
 - Android SDK platform and build tools (installed via Android Studio's SDK Manager)
 
-**Environment variable:**
+**Environment variables:**
 
-| Variable | Value | When |
+| Variable | Value | Where |
 |---|---|---|
-| `CAPACITOR_SERVER_URL` | `https://your-app.up.railway.app` | Production build (default) |
-| `CAPACITOR_SERVER_URL` | `http://10.0.2.2:3001` | Android emulator → local server |
+| `CAPACITOR_SERVER_URL` | `https://your-app.up.railway.app` | Build machine — production default |
+| `CAPACITOR_SERVER_URL` | `http://10.0.2.2:3001` | Build machine — Android emulator → local server |
+| `FIREBASE_SERVICE_ACCOUNT` | JSON string of service-account key | Railway + `server/.env` |
 
 Update the default placeholder in `capacitor.config.ts` once the Railway URL is confirmed.
+
+**Push notifications (Android):**
+
+Push notifications are sent via Firebase Cloud Messaging (FCM). One-time setup:
+
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com), add an Android app with package name `com.milkmoney.app`
+2. Download `google-services.json` and place it under `android/app/` (the Gradle plugin activates automatically)
+3. Generate a service-account key (Project Settings → Service accounts → Generate new private key)
+4. Set `FIREBASE_SERVICE_ACCOUNT` to the full JSON string in Railway and locally in `server/.env`
+
+Push is **Android-only** and **silently no-ops** on the web build and when `FIREBASE_SERVICE_ACCOUNT` is unset. The server logs `[push] FIREBASE_SERVICE_ACCOUNT not set — push notifications disabled` on startup when unconfigured.
 
 **Standard workflow:**
 
