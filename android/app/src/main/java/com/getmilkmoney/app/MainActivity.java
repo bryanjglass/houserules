@@ -1,4 +1,4 @@
-package com.milkmoney.app;
+package com.getmilkmoney.app;
 
 import com.getcapacitor.BridgeActivity;
 
