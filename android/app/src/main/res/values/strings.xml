@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">MilkMoney</string>
     <string name="title_activity_main">MilkMoney</string>
-    <string name="package_name">com.milkmoney.app</string>
-    <string name="custom_url_scheme">com.milkmoney.app</string>
+    <string name="package_name">com.getmilkmoney.app</string>
+    <string name="custom_url_scheme">com.getmilkmoney.app</string>
 </resources>
