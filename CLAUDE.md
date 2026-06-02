@@ -46,7 +46,7 @@ Seed logins: parent `parent@example.com` / `password123`; children Alex (PIN `12
 
 ## Deployment
 
-Railway (`railway.toml`), nixpacks builder. Build runs the client build and `prisma generate`; deploy runs `prisma migrate deploy` then starts the server. Production uses a SQLite file at `/data/prod.db` (set via `DATABASE_URL`). Required env vars: `DATABASE_URL`, `JWT_SECRET`, `CLIENT_URL`, `NODE_ENV`, `PORT`.
+Railway (`railway.toml`), nixpacks builder. Build runs the client build and `prisma generate`; deploy runs `prisma migrate deploy` then starts the server. Production uses a SQLite file at `/data/prod.db` (set via `DATABASE_URL`). Required env vars: `DATABASE_URL`, `JWT_SECRET`, `CLIENT_URL`, `NODE_ENV`, `PORT`. Optional: `GOOGLE_CLIENT_ID` (web OAuth client ID; set on Railway and in `server/.env` to enable "Sign in with Google" for parents — the server verifies Google ID tokens against it; Google login is disabled when unset). The client needs the same value as `VITE_GOOGLE_CLIENT_ID` (a build-time Vite var, e.g. in `client/.env`) to render the button; it hides the button when unset.
 
 ## Design
 

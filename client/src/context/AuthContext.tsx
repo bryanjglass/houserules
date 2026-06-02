@@ -24,6 +24,7 @@ interface AuthContextValue {
   // undefined = loading, null = logged out, AuthUser = logged in
   user: AuthUser | null | undefined;
   login: (credentials: Credentials) => Promise<AuthUser>;
+  googleLogin: (credential: string) => Promise<AuthUser>;
   deviceLogin: (childId: string) => Promise<AuthUser>;
   register: (data: RegisterData) => Promise<AuthUser>;
   logout: () => Promise<void>;
@@ -76,6 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return r.data as AuthUser;
   };
 
+  const googleLogin = async (credential: string) => {
+    const r = await api.post('/auth/google', { credential });
+    setUser(r.data);
+    return r.data as AuthUser;
+  };
+
   const deviceLogin = async (childId: string) => {
     const r = await api.post('/auth/device-login', { childId });
     setUser(r.data);
@@ -94,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, deviceLogin, register, logout }}>
+    <AuthContext.Provider value={{ user, login, googleLogin, deviceLogin, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

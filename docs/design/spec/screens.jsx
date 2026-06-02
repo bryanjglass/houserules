@@ -153,6 +153,22 @@ window.Screen1ParentLogin = () => (
           background: '#fff', color: '#2D7FF9', fontWeight: 700, fontSize: 15, fontFamily: 'inherit',
           border: '1.5px solid #DBEAFE',
         }}>Create Parent Account</button>
+        {/* "or" divider + official Google button (rendered by GIS at runtime) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0' }}>
+          <div style={{ flex: 1, height: 1, background: '#E5E7EB' }}/>
+          <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>or</span>
+          <div style={{ flex: 1, height: 1, background: '#E5E7EB' }}/>
+        </div>
+        <button style={{
+          width: '100%', padding: '13px', borderRadius: 9999,
+          background: '#fff', color: '#3C4043', fontWeight: 600, fontSize: 14, fontFamily: 'inherit',
+          border: '1px solid #DADCE0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+        }}>
+          <span style={{ fontWeight: 700, fontFamily: 'inherit',
+            background: 'conic-gradient(#EA4335 0 25%, #FBBC05 0 50%, #34A853 0 75%, #4285F4 0)',
+            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>G</span>
+          Sign in with Google
+        </button>
         <button style={{
           background: 'transparent', border: 'none', color: '#2D7FF9',
           fontWeight: 600, fontSize: 14, fontFamily: 'inherit', marginTop: 6, cursor: 'pointer',
