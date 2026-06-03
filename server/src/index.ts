@@ -43,7 +43,16 @@ if (isProd) app.set('trust proxy', 1);
 
 // CSP is disabled here: the SPA relies on React inline style attributes, so a
 // tuned policy needs to be verified in a browser before enabling.
-app.use(helmet({ contentSecurityPolicy: false }));
+// COOP is relaxed to same-origin-allow-popups so the Google Identity Services
+// sign-in popup can post the credential back to the opener window; Helmet's
+// strict same-origin default severs that link and the popup hangs on
+// accounts.google.com/gsi/transform.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  })
+);
 app.use(cors({ origin: CLIENT_URL, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
