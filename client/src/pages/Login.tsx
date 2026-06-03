@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import { Wordmark, LogoTile } from '../components/Brand';
 import { StarIcon } from '../components/Icons';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 import landscape from '../assets/landscape.png';
 import cowMascot from '../assets/cow-mascot.png';
 
@@ -123,6 +124,13 @@ export default function Login() {
         )}
 
         {mode === 'child' && <ChildLoginForm />}
+
+        {/* Sign in with Google — parent + register modes only (DESIGN.md §4/§5) */}
+        {mode !== 'child' && (
+          <div className="mt-4">
+            <GoogleSignInButton onError={setError} />
+          </div>
+        )}
 
         {/* Role switch */}
         {mode !== 'register' && (

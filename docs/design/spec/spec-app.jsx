@@ -295,6 +295,7 @@ const Screens = () => (
           ['A2', 'Headline: Title 2 (22/800), 240px max-width, center-aligned.'],
           ['A3', 'Primary button has soft blue glow shadow — only on primary.'],
           ['A4', 'Bottom illustration is full-bleed: assets/landscape.png (~150px tall).'],
+          ['A5', '"or" divider (line rule + ink-400 label), then official Google button — parent/register modes only.'],
         ]}>
         <Screen1ParentLogin/>
       </ScreenCap>

@@ -14,10 +14,14 @@ datasource db {
 //   calendar-day decisions (recurring generation + future-completion guard).
 // pinHash: bcrypt hash of a child's 4-digit PIN (children only)
 // pinFailedAttempts / pinLockedUntil: per-child PIN lockout state
+// googleId: Google account subject ("sub") for parents who sign in with Google.
+//   Null for password-only parents and all children. Set on first Google sign-in
+//   or when a verified Google email is auto-linked to an existing parent.
 model User {
   id                String    @id @default(cuid())
   name              String
   email             String?   @unique
+  googleId          String?   @unique
   householdCode     String?   @unique
   timezone          String    @default("UTC")
   pinHash           String?

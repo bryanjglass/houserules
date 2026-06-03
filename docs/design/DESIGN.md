@@ -139,6 +139,19 @@ Multiples of 4: `4 · 6 · 8 · 12 · 16 · 20 · 24 · 32 · 48`.
 - Only **one primary** per screen.
 - Hover (primary): swap background to `brand-600`.
 
+### Sign in with Google
+
+- Use Google's **official GIS-rendered button** (`google.accounts.id.renderButton`),
+  not a custom-styled control — this keeps us inside Google's brand guidelines.
+  Render it `outline`/`pill`, `large`, full-width so its footprint matches the
+  button stack above it.
+- It is **not** one of the `primary`/`secondary`/`ghost` variants and carries no
+  MilkMoney color tokens of its own — Google owns its appearance.
+- Separate it from the email/password form with an **"or" divider**: a centered
+  `ink-400` label on a single `line`-colored rule (see §1 `line`).
+- Parent and register modes only; never shown in Kid login.
+- Hidden entirely when Google login is unconfigured (no `GOOGLE_CLIENT_ID`).
+
 ### Input
 
 - Radius 14px, border 1.5px `line`, padding 14×16px, font 15/500.
@@ -213,6 +226,9 @@ the design spec doc (A1–F4).
 - 68px logo tile (blue gradient + `assets/icon-bottle.png`) + wordmark
 - Title 2 headline (240px max-width), Body subtitle (260px max)
 - Buttons stack: primary → secondary → ghost
+- Below the stack: an **"or" divider**, then the **Sign in with Google** button
+  (§4) — shown in parent and register modes, hidden when Google login is
+  unconfigured
 - Bottom: full-bleed `assets/landscape.png`, 0 bottom inset
 
 ### Screen 2 — Parent Dashboard

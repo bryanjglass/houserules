@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response, CookieOptions } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import type { User } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -10,6 +11,11 @@ import { authLimiter } from '../middleware/rateLimit.js';
 import { generateHouseholdCode, generateDeviceToken, hashToken } from '../lib/codes.js';
 
 const router = Router();
+
+// Google sign-in (parents only). Verifies the Google ID token against our client id;
+// unset GOOGLE_CLIENT_ID disables the route (the client hides the button too).
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 const MAX_PIN_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
@@ -199,6 +205,65 @@ router.post('/register', authLimiter, async (req, res) => {
     });
     res.cookie('token', signToken(user), COOKIE_OPTS);
     res.status(201).json({ id: user.id, name: user.name, role: user.role });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Parent sign-in with a Google ID token (token model — no redirect, no client secret).
+// Resolution order: existing googleId -> verified-email auto-link -> create new household.
+router.post('/google', authLimiter, async (req, res) => {
+  if (!googleClient) return res.status(503).json({ error: 'Google login is not configured' });
+
+  const { credential } = req.body;
+  if (!credential) return res.status(401).json({ error: 'Missing Google credential' });
+
+  try {
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID as string });
+      payload = ticket.getPayload();
+    } catch {
+      return res.status(401).json({ error: 'Invalid Google credential' });
+    }
+
+    const sub = payload?.sub;
+    const email = payload?.email;
+    if (!payload || !sub || !email) return res.status(401).json({ error: 'Invalid Google credential' });
+
+    // Never link or create on an email Google hasn't verified — that would reopen takeover.
+    if (payload.email_verified !== true) {
+      return res.status(401).json({ error: 'Google email is not verified' });
+    }
+
+    // 1) Known Google account.
+    let user = await prisma.user.findUnique({ where: { googleId: sub } });
+
+    // 2) Existing parent with the same verified email — auto-link, keep their password.
+    if (!user) {
+      const byEmail = await prisma.user.findUnique({ where: { email } });
+      if (byEmail) {
+        user = await prisma.user.update({ where: { id: byEmail.id }, data: { googleId: sub } });
+      }
+    }
+
+    // 3) First-time sign-in — silently provision a new parent household.
+    if (!user) {
+      const householdCode = await uniqueHouseholdCode();
+      user = await prisma.user.create({
+        data: {
+          name: payload.name || email.split('@')[0] || 'Parent',
+          email,
+          googleId: sub,
+          householdCode,
+          role: 'PARENT',
+        },
+      });
+    }
+
+    res.cookie('token', signToken(user), COOKIE_OPTS);
+    return res.json({ id: user.id, name: user.name, role: user.role });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
