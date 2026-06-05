@@ -1,27 +1,18 @@
-import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import api from '../../api/client';
+import { useChildren } from '../../api/queries';
 import TaskForm from '../../components/TaskForm';
-import type { Child } from '../../types/models';
+import QueryBoundary from '../../components/QueryBoundary';
 
-// Create-a-task route: load the household's children, then render the shared
-// <TaskForm> in create mode (all form logic lives in TaskForm).
+// Create-a-task route: load the household's children (from the shared cache),
+// then render the shared <TaskForm> in create mode.
 export default function TaskManager() {
   const [searchParams] = useSearchParams();
   const preselectedChildId = searchParams.get('childId') || '';
+  const childrenQuery = useChildren();
 
-  const [children, setChildren] = useState<Child[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get('/users/children')
-      .then(r => setChildren(r.data))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return <div className="max-w-lg mx-auto px-5 pt-10 text-center text-ink-400">Loading…</div>;
-  }
-
-  return <TaskForm mode="create" children={children} defaultChildId={preselectedChildId} />;
+  return (
+    <QueryBoundary isPending={childrenQuery.isPending} isError={childrenQuery.isError} onRetry={childrenQuery.refetch}>
+      <TaskForm mode="create" children={childrenQuery.data ?? []} defaultChildId={preselectedChildId} />
+    </QueryBoundary>
+  );
 }

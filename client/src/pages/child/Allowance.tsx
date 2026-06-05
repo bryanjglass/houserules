@@ -1,45 +1,31 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import api from '../../api/client';
+import { useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useAllowance, useGoal } from '../../api/queries';
+import { useRequestCashIn } from '../../api/mutations';
 import BalanceDisplay from '../../components/BalanceDisplay';
 import Thumb from '../../components/Thumb';
 import SavingsGoalCard from '../../components/SavingsGoalCard';
+import Loading from '../../components/Loading';
 import { formatCents } from '../../lib/money';
-import type { Allowance, GoalView } from '../../types/models';
 
 const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function ChildAllowance() {
   const { user } = useAuth();
-  const [allowance, setAllowance] = useState<Allowance | null>(null);
-  const [goal, setGoal] = useState<GoalView | null>(null);
-  const [cashingIn, setCashingIn] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const allowanceQuery = useAllowance(user?.id);
+  const goalQuery = useGoal(user?.id);
+  const requestCashIn = useRequestCashIn();
 
-  const refresh = useCallback(async () => {
-    if (!user) return;
-    const [allowanceRes, goalRes] = await Promise.all([
-      api.get(`/allowance/${user.id}`),
-      api.get(`/goals/${user.id}`).catch(() => null),
-    ]);
-    setAllowance(allowanceRes.data);
-    setGoal(goalRes?.data?.goal ?? null);
-    setLoading(false);
-  }, [user]);
-
-  useEffect(() => { refresh(); }, [refresh]);
+  const allowance = allowanceQuery.data ?? null;
+  const goal = goalQuery.data ?? null;
 
   const handleCashIn = async () => {
     if (!goal) return;
-    setCashingIn(true);
     try {
-      await api.post(`/goals/${goal.id}/request-cash-in`);
-      await refresh();
+      await requestCashIn.mutateAsync(goal.id);
     } catch (err: any) {
       alert(err.response?.data?.error || 'Could not request cash-in');
-    } finally {
-      setCashingIn(false);
     }
   };
 
@@ -58,8 +44,8 @@ export default function ChildAllowance() {
     return set;
   }, [transactions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-screen text-ink-400 text-xl">Loading…</div>;
+  if (allowanceQuery.isPending) {
+    return <Loading />;
   }
 
   const year = today.getFullYear();
@@ -140,7 +126,7 @@ export default function ChildAllowance() {
         {goal && (
           <>
             <h2 className="mt-4 mb-2 text-[14px] font-extrabold">Savings Goal</h2>
-            <SavingsGoalCard goal={goal} onCashIn={handleCashIn} busy={cashingIn} />
+            <SavingsGoalCard goal={goal} onCashIn={handleCashIn} busy={requestCashIn.isPending} />
           </>
         )}
       </main>

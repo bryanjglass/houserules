@@ -10,6 +10,7 @@ import ChildDashboard from './pages/child/Dashboard';
 import ChildAllowance from './pages/child/Allowance';
 import Calendar from './pages/Calendar';
 import AppShell from './components/AppShell';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function AppRoutes() {
   const { user } = useAuth();
@@ -61,8 +62,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import api from '../api/client';
+import { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useCalendar } from '../api/queries';
 import { formatCents } from '../lib/money';
 import type { CalendarEvent } from '../types/models';
 
@@ -27,8 +27,6 @@ export default function Calendar() {
   const today = new Date();
 
   const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Build a stable 6-week (42-cell) grid covering the visible month.
   const cells = useMemo(() => {
@@ -38,19 +36,16 @@ export default function Calendar() {
     return Array.from({ length: 42 }, (_, i) => new Date(year, month, 1 - leading + i));
   }, [viewDate]);
 
-  const refresh = useCallback(async () => {
-    const start = cells[0];
-    const last = cells[cells.length - 1];
-    const end = new Date(last.getFullYear(), last.getMonth(), last.getDate(), 23, 59, 59, 999);
-    setLoading(true);
-    const r = await api.get('/tasks/calendar', {
-      params: { start: start.toISOString(), end: end.toISOString() },
-    });
-    setEvents(r.data);
-    setLoading(false);
-  }, [cells]);
+  // The visible range, keyed so each month's events are cached separately.
+  const startISO = cells[0].toISOString();
+  const lastCell = cells[cells.length - 1];
+  const endISO = new Date(
+    lastCell.getFullYear(), lastCell.getMonth(), lastCell.getDate(), 23, 59, 59, 999
+  ).toISOString();
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const calendarQuery = useCalendar(startISO, endISO);
+  const events: CalendarEvent[] = calendarQuery.data ?? [];
+  const loading = calendarQuery.isPending;
 
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
