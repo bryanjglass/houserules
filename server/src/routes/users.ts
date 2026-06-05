@@ -4,19 +4,12 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { publicLimiter } from '../middleware/rateLimit.js';
-import { generateHouseholdCode } from '../lib/codes.js';
+import { uniqueHouseholdCode } from '../lib/codes.js';
 import { isValidTimeZone } from '../lib/tz.js';
+import { validateBody } from '../lib/validation.js';
+import { childCreateSchema, childUpdateSchema } from '../schemas/user.js';
 
 const router = Router();
-
-async function uniqueHouseholdCode(): Promise<string> {
-  for (let i = 0; i < 8; i++) {
-    const code = generateHouseholdCode();
-    const exists = await prisma.user.findUnique({ where: { householdCode: code } });
-    if (!exists) return code;
-  }
-  throw new Error('Could not generate a unique household code');
-}
 
 // Public: look up children by household code (for child login screen, returns only id+name)
 router.get('/children-public', publicLimiter, async (req, res) => {
@@ -85,10 +78,8 @@ router.get('/children', requireRole('PARENT'), async (req, res) => {
 });
 
 // Create a child account
-router.post('/children', requireRole('PARENT'), async (req, res) => {
+router.post('/children', requireRole('PARENT'), validateBody(childCreateSchema), async (req, res) => {
   const { name, pin } = req.body;
-  if (!name || !pin) return res.status(400).json({ error: 'name and pin required' });
-  if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN must be 4 digits' });
 
   try {
     const pinHash = await bcrypt.hash(pin, 10);
@@ -103,12 +94,11 @@ router.post('/children', requireRole('PARENT'), async (req, res) => {
 });
 
 // Update child name or PIN
-router.put('/children/:id', requireRole('PARENT'), async (req, res) => {
+router.put('/children/:id', requireRole('PARENT'), validateBody(childUpdateSchema), async (req, res) => {
   const child = await prisma.user.findUnique({ where: { id: req.params.id } });
   if (!child || child.parentId !== req.user!.id) return res.status(404).json({ error: 'Child not found' });
 
   const { name, pin } = req.body;
-  if (pin && !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'PIN must be 4 digits' });
 
   // Resetting the PIN also clears any active lockout.
   const pinData = pin

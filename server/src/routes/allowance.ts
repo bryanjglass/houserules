@@ -1,25 +1,14 @@
 import { Router } from 'express';
-import type { Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { validateBody } from '../lib/validation.js';
+import { getChildOrFail } from '../lib/guards.js';
+import { adjustSchema } from '../schemas/allowance.js';
 
 const router = Router();
 
 router.use(requireAuth);
-
-async function getChildOrFail(childId: string, parentId: string, res: Response) {
-  const child = await prisma.user.findUnique({ where: { id: childId } });
-  if (!child || child.role !== 'CHILD') {
-    res.status(404).json({ error: 'Child not found' });
-    return null;
-  }
-  if (child.parentId !== parentId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return null;
-  }
-  return child;
-}
 
 // GET /api/allowance/:childId
 // Parent or the child themselves can view
@@ -50,19 +39,16 @@ router.get('/:childId', async (req, res) => {
 });
 
 // POST /api/allowance/:childId/adjust — parent manually adjusts balance
-router.post('/:childId/adjust', requireRole('PARENT'), async (req, res) => {
+router.post('/:childId/adjust', requireRole('PARENT'), validateBody(adjustSchema), async (req, res) => {
   const child = await getChildOrFail(req.params.childId, req.user!.id, res);
   if (!child) return;
 
+  // amount is a validated signed integer (cents); note is optional.
   const { amount, note } = req.body;
-  if (amount === undefined || amount === null) return res.status(400).json({ error: 'amount required' });
-  const parsedAmount = Math.round(Number(amount)); // integer cents
-  if (!Number.isInteger(parsedAmount)) return res.status(400).json({ error: 'amount must be a number' });
-
   const transaction = await prisma.transaction.create({
     data: {
       userId: child.id,
-      amount: parsedAmount,
+      amount,
       type: 'ADJUSTMENT',
       note: note || null,
     },

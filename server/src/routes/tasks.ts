@@ -6,17 +6,17 @@ import { prisma } from '../lib/prisma.js';
 import { notifyUser } from '../lib/push.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { validateBody } from '../lib/validation.js';
+import { taskCreateSchema, taskUpdateSchema } from '../schemas/task.js';
 import {
   familyToday,
   dueDay,
   addDays,
-  addMonths,
-  dayOfWeek,
   compareDays,
   isFutureDay,
-  stampLocalNoon,
   type CalDay,
 } from '../lib/tz.js';
+import { nextDueDate, parseWeeklyDays } from '../lib/recurrence.js';
 
 const router = Router();
 
@@ -30,58 +30,9 @@ const CATCHUP_WINDOW_DAYS = 14;
 // Upper bound on schedule steps walked per chain, mirroring projectOccurrences.
 const CATCHUP_MAX_STEPS = 400;
 
-function parseWeeklyDays(weeklyDays: string | null | undefined): number[] {
-  if (!weeklyDays) return [];
-  return [...new Set(
-    String(weeklyDays)
-      .split(',')
-      .map(d => parseInt(d, 10))
-      .filter(d => Number.isInteger(d) && d >= 0 && d <= 6)
-  )].sort((a, b) => a - b);
-}
-
 // A stable per-day key for de-duping occurrences regardless of stored time.
 function dayKey(day: CalDay): string {
   return `${day.y}-${day.m}-${day.d}`;
-}
-
-// The next scheduled occurrence after `currentDue`, computed in CALENDAR DAYS in
-// the household timezone and stamped at local noon so it can't slip across a day
-// boundary under DST/offset. Reuses the same weekly/selected-day + monthly rules.
-function nextDueDate(
-  currentDue: Date | string | null,
-  recurrence: string | null,
-  weeklyDays: string | null | undefined,
-  tz: string
-): Date {
-  const baseDay = currentDue ? dueDay(currentDue, tz) : familyToday(tz);
-  let next: CalDay;
-  switch (recurrence) {
-    case 'DAILY':
-      next = addDays(baseDay, 1);
-      break;
-    case 'WEEKLY': {
-      const days = parseWeeklyDays(weeklyDays);
-      if (days.length === 0) {
-        next = addDays(baseDay, 7);
-        break;
-      }
-      const daySet = new Set(days);
-      let cur = baseDay;
-      for (let i = 1; i <= 7; i++) {
-        cur = addDays(cur, 1);
-        if (daySet.has(dayOfWeek(cur))) break;
-      }
-      next = cur;
-      break;
-    }
-    case 'MONTHLY':
-      next = addMonths(baseDay, 1);
-      break;
-    default:
-      next = baseDay;
-  }
-  return stampLocalNoon(next, tz);
 }
 
 // Resolve the household timezone for a request user (parent's own zone, or a
@@ -427,15 +378,15 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/tasks — parent creates task
-router.post('/', requireRole('PARENT'), async (req, res) => {
+router.post('/', requireRole('PARENT'), validateBody(taskCreateSchema), async (req, res) => {
   const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence, weeklyDays, isUpForGrabs, isPerUnit, unitReward, catchUp } = req.body;
 
   // Per-unit chore: an open, per-item-priced definition that lives in the
   // household pool forever. No assignee, never recurring, dollarAmount stays
   // null (the credit comes from unitReward * quantity at approval).
   if (isPerUnit) {
-    if (!title) return res.status(400).json({ error: 'title required' });
-    const reward = unitReward ? Math.round(Number(unitReward)) : null;
+    // Schema guarantees title; per-unit still requires a positive reward.
+    const reward = unitReward ?? null;
     if (!reward || reward <= 0) return res.status(400).json({ error: 'unitReward required for per-unit chores' });
     const task = await prisma.task.create({
       data: {
@@ -453,9 +404,10 @@ router.post('/', requireRole('PARENT'), async (req, res) => {
   }
 
   const upForGrabs = Boolean(isUpForGrabs);
-  // An up-for-grabs chore has no assignee; every other chore must name a child.
-  if (!title || (!assignedToId && !upForGrabs)) {
-    return res.status(400).json({ error: 'title and either assignedToId or isUpForGrabs required' });
+  // Schema guarantees title; an up-for-grabs chore has no assignee, every other
+  // chore must name a child.
+  if (!assignedToId && !upForGrabs) {
+    return res.status(400).json({ error: 'either assignedToId or isUpForGrabs required' });
   }
 
   // Only validate the assignee when one is given (up-for-grabs chores have none).
@@ -471,7 +423,7 @@ router.post('/', requireRole('PARENT'), async (req, res) => {
     data: {
       title,
       description,
-      dollarAmount: dollarAmount ? Math.round(Number(dollarAmount)) : null,
+      dollarAmount: dollarAmount || null,
       // When up-for-grabs, leave the chore unassigned so the whole household can claim it.
       assignedToId: upForGrabs ? null : assignedToId,
       isUpForGrabs: upForGrabs,
@@ -552,8 +504,8 @@ router.post('/:id/log-units', requireRole('CHILD'), async (req, res) => {
 
 // PUT /api/tasks/:id
 // Parent: edit title/description/amount
-// Child: mark as COMPLETED
-router.put('/:id', async (req, res) => {
+// Child: mark as COMPLETED (empty body)
+router.put('/:id', validateBody(taskUpdateSchema), async (req, res) => {
   const task = await prisma.task.findUnique({ where: { id: req.params.id } });
   if (!task) return res.status(404).json({ error: 'Task not found' });
 
@@ -586,7 +538,7 @@ router.put('/:id', async (req, res) => {
   const data: Prisma.TaskUpdateInput = {
     ...(title && { title }),
     ...(description !== undefined && { description }),
-    ...(dollarAmount !== undefined && { dollarAmount: dollarAmount ? Math.round(Number(dollarAmount)) : null }),
+    ...(dollarAmount !== undefined && { dollarAmount: dollarAmount || null }),
     ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
     ...(assignedToId && { assignedTo: { connect: { id: assignedToId } } }),
     ...(isUpForGrabs !== undefined && { isUpForGrabs: Boolean(isUpForGrabs) }),
