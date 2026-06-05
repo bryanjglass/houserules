@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/client';
+import { useCreateTask, useUpdateTask } from '../api/mutations';
 import { Avatar } from './Brand';
 import { ChevronLeftIcon, CalendarIcon } from './Icons';
 import { dollarsToCents, formatCents } from '../lib/money';
@@ -81,6 +81,9 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+
   // Assignee/up-for-grabs are locked once the chore is per-unit or awaiting
   // approval — reassigning mid-completion is out of scope (edit mode only).
   const assigneeLocked = editing && (isPerUnit || initial?.status === 'COMPLETED');
@@ -110,21 +113,24 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
     try {
       if (editing) {
         // Only the editable fields go up; per-unit reward and locked assignment stay put.
-        await api.put(`/tasks/${initial!.id}`, {
-          title,
-          description: description || null,
-          ...(isPerUnit ? {} : { dollarAmount: dollarAmount ? dollarsToCents(dollarAmount) : null }),
-          ...(assigneeLocked ? {} : { assignedToId: isUpForGrabs ? undefined : assignedToId || undefined, isUpForGrabs }),
-          dueDate: dueDate || null,
-          ...(isPerUnit ? {} : {
-            isRecurring,
-            recurrence: isRecurring ? recurrence : null,
-            weeklyDays: isRecurring && recurrence === 'WEEKLY' ? weeklyDays : [],
-            catchUp: isRecurring && !isUpForGrabs && assignedToId ? catchUp : false,
-          }),
+        await updateTask.mutateAsync({
+          id: initial!.id,
+          body: {
+            title,
+            description: description || null,
+            ...(isPerUnit ? {} : { dollarAmount: dollarAmount ? dollarsToCents(dollarAmount) : null }),
+            ...(assigneeLocked ? {} : { assignedToId: isUpForGrabs ? undefined : assignedToId || undefined, isUpForGrabs }),
+            dueDate: dueDate || null,
+            ...(isPerUnit ? {} : {
+              isRecurring,
+              recurrence: isRecurring ? recurrence : null,
+              weeklyDays: isRecurring && recurrence === 'WEEKLY' ? weeklyDays : [],
+              catchUp: isRecurring && !isUpForGrabs && assignedToId ? catchUp : false,
+            }),
+          },
         });
       } else if (isPerUnit) {
-        await api.post('/tasks', {
+        await createTask.mutateAsync({
           title,
           description: description || undefined,
           isPerUnit: true,
@@ -132,7 +138,7 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
           dueDate: dueDate || undefined,
         });
       } else {
-        await api.post('/tasks', {
+        await createTask.mutateAsync({
           title,
           description: description || undefined,
           dollarAmount: dollarAmount ? dollarsToCents(dollarAmount) : undefined,

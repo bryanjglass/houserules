@@ -1,65 +1,60 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import api from '../../api/client';
+import { useChildren, useTasks, useAllowance, useGoal } from '../../api/queries';
+import { useAdjustAllowance, useCreateGoal, useUpdateGoal, useDeleteGoal, useDecideCashIn } from '../../api/mutations';
 import TaskCard from '../../components/TaskCard';
 import BalanceDisplay from '../../components/BalanceDisplay';
 import SavingsGoalCard from '../../components/SavingsGoalCard';
+import Loading from '../../components/Loading';
 import { Avatar } from '../../components/Brand';
 import { ChevronLeftIcon, PlusIcon } from '../../components/Icons';
 import { formatCents, dollarsToCents } from '../../lib/money';
-import type { Child, TaskView, Allowance, GoalView } from '../../types/models';
 
 const STATUS_ORDER: Record<string, number> = { COMPLETED: 0, PENDING: 1, REJECTED: 2, APPROVED: 3 };
 
 export default function ChildDetail() {
   const { childId } = useParams();
-  const [child, setChild] = useState<Child | null>(null);
-  const [tasks, setTasks] = useState<TaskView[]>([]);
-  const [allowance, setAllowance] = useState<Allowance | null>(null);
-  const [goal, setGoal] = useState<GoalView | null>(null);
+  const childrenQuery = useChildren();
+  const tasksQuery = useTasks();
+  const allowanceQuery = useAllowance(childId);
+  const goalQuery = useGoal(childId);
+
+  const child = childrenQuery.data?.find(c => c.id === childId) ?? null;
+  const tasks = (tasksQuery.data ?? []).filter(t => t.assignedToId === childId);
+  const allowance = allowanceQuery.data ?? null;
+  const goal = goalQuery.data ?? null;
+
+  // Mutations invalidate the cache on success, so the lists/balance/goal refresh
+  // automatically — no manual refetch.
+  const adjust = useAdjustAllowance(childId ?? '');
+  const createGoal = useCreateGoal(childId ?? '');
+  const updateGoal = useUpdateGoal();
+  const deleteGoalMutation = useDeleteGoal();
+  const decide = useDecideCashIn();
+
   const [showAdjust, setShowAdjust] = useState(false);
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustNote, setAdjustNote] = useState('');
-  const [adjustLoading, setAdjustLoading] = useState(false);
   const [filter, setFilter] = useState<'active' | 'done'>('active');
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [goalTitle, setGoalTitle] = useState('');
   const [goalTarget, setGoalTarget] = useState('');
-  const [goalBusy, setGoalBusy] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const [childrenRes, tasksRes, allowanceRes, goalRes] = await Promise.all([
-      api.get('/users/children'),
-      api.get('/tasks'),
-      api.get(`/allowance/${childId}`),
-      api.get(`/goals/${childId}`).catch(() => null),
-    ]);
-    const found = childrenRes.data.find((c: Child) => c.id === childId);
-    setChild(found ?? null);
-    setTasks(tasksRes.data.filter((t: TaskView) => t.assignedToId === childId));
-    setAllowance(allowanceRes.data);
-    setGoal(goalRes?.data?.goal ?? null);
-  }, [childId]);
-
-  useEffect(() => { refresh(); }, [refresh]);
+  const adjustLoading = adjust.isPending;
+  const goalBusy = createGoal.isPending || updateGoal.isPending || deleteGoalMutation.isPending || decide.isPending;
 
   const handleAdjust = async (e: FormEvent) => {
     e.preventDefault();
-    setAdjustLoading(true);
+    const amount = dollarsToCents(adjustAmount);
+    if (amount === null) { alert('Enter a valid amount'); return; }
     try {
-      await api.post(`/allowance/${childId}/adjust`, {
-        amount: dollarsToCents(adjustAmount),
-        note: adjustNote || undefined,
-      });
+      await adjust.mutateAsync({ amount, note: adjustNote || undefined });
       setAdjustAmount('');
       setAdjustNote('');
       setShowAdjust(false);
-      refresh();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed');
-    } finally {
-      setAdjustLoading(false);
     }
   };
 
@@ -70,47 +65,35 @@ export default function ChildDetail() {
       alert('Enter a title and a positive target amount');
       return;
     }
-    setGoalBusy(true);
     try {
       if (goal) {
-        await api.patch(`/goals/${goal.id}`, { title: goalTitle.trim(), targetAmount });
+        await updateGoal.mutateAsync({ goalId: goal.id, body: { title: goalTitle.trim(), targetAmount } });
       } else {
-        await api.post(`/goals/${childId}`, { title: goalTitle.trim(), targetAmount });
+        await createGoal.mutateAsync({ title: goalTitle.trim(), targetAmount });
       }
       setShowGoalForm(false);
       setGoalTitle('');
       setGoalTarget('');
-      refresh();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to save goal');
-    } finally {
-      setGoalBusy(false);
     }
   };
 
   const deleteGoal = async () => {
     if (!goal || !confirm(`Delete the goal "${goal.title}"?`)) return;
-    setGoalBusy(true);
     try {
-      await api.delete(`/goals/${goal.id}`);
-      refresh();
+      await deleteGoalMutation.mutateAsync(goal.id);
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete goal');
-    } finally {
-      setGoalBusy(false);
     }
   };
 
   const decideCashIn = async (action: 'approve' | 'reject') => {
     if (!goal) return;
-    setGoalBusy(true);
     try {
-      await api.post(`/goals/${goal.id}/${action}`);
-      refresh();
+      await decide.mutateAsync({ goalId: goal.id, action });
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed');
-    } finally {
-      setGoalBusy(false);
     }
   };
 
@@ -120,7 +103,7 @@ export default function ChildDetail() {
     setShowGoalForm(true);
   };
 
-  if (!child) return <div className="flex items-center justify-center min-h-screen text-ink-400">Loading…</div>;
+  if (childrenQuery.isPending || !child) return <Loading />;
 
   const filteredTasks = tasks
     .filter(t => filter === 'active' ? t.status !== 'APPROVED' : t.status === 'APPROVED')
@@ -255,7 +238,7 @@ export default function ChildDetail() {
         ) : (
           <div className="space-y-3">
             {filteredTasks.map(task => (
-              <TaskCard key={task.id} task={task} role="PARENT" onUpdate={refresh} />
+              <TaskCard key={task.id} task={task} role="PARENT" />
             ))}
           </div>
         )}

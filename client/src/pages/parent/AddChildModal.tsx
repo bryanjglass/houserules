@@ -1,32 +1,24 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import api from '../../api/client';
+import { useCreateChild } from '../../api/mutations';
 
-export default function AddChildModal({
-  onClose,
-  onAdded,
-}: {
-  onClose: () => void;
-  onAdded: () => void;
-}) {
+export default function AddChildModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const createChild = useCreateChild();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     if (!/^\d{4}$/.test(pin)) { setError('PIN must be exactly 4 digits'); return; }
-    setLoading(true);
     try {
-      await api.post('/users/children', { name, pin });
-      onAdded();
+      // The mutation invalidates the children list, so the family grid updates
+      // on its own — no onAdded callback needed.
+      await createChild.mutateAsync({ name, pin });
       onClose();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to add kid');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -37,7 +29,7 @@ export default function AddChildModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="label">Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} required className="input" placeholder="Alex" />
+            <input type="text" value={name} onChange={e => { setName(e.target.value); setError(''); }} required className="input" placeholder="Alex" />
           </div>
           <div>
             <label className="label">4-digit PIN</label>
@@ -47,7 +39,7 @@ export default function AddChildModal({
               pattern="[0-9]{4}"
               maxLength={4}
               value={pin}
-              onChange={e => setPin(e.target.value)}
+              onChange={e => { setPin(e.target.value); setError(''); }}
               required
               className="input text-center text-2xl tracking-widest"
               placeholder="••••"
@@ -62,8 +54,8 @@ export default function AddChildModal({
             >
               Cancel
             </button>
-            <button type="submit" disabled={loading} className="btn-primary flex-1 !py-2.5">
-              {loading ? 'Adding…' : 'Add Kid'}
+            <button type="submit" disabled={createChild.isPending} className="btn-primary flex-1 !py-2.5">
+              {createChild.isPending ? 'Adding…' : 'Add Kid'}
             </button>
           </div>
         </form>

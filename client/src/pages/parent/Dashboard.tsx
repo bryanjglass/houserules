@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueries } from '@tanstack/react-query';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { useChildren, useTasks } from '../../api/queries';
+import { keys } from '../../api/keys';
 import TaskCard from '../../components/TaskCard';
 import AddChildModal from './AddChildModal';
+import QueryBoundary from '../../components/QueryBoundary';
 import { Avatar } from '../../components/Brand';
 import { BellIcon, PlusIcon } from '../../components/Icons';
 import { formatCents } from '../../lib/money';
@@ -24,33 +28,31 @@ function isThisMonth(d: string): boolean {
 
 export default function ParentDashboard() {
   const { user } = useAuth();
-  const [children, setChildren] = useState<Child[]>([]);
-  const [tasks, setTasks] = useState<TaskView[]>([]);
-  const [balances, setBalances] = useState<Record<string, Allowance | null>>({}); // childId -> { balance, transactions }
+  const childrenQuery = useChildren();
+  const tasksQuery = useTasks();
+  const children = childrenQuery.data ?? [];
+  const tasks = tasksQuery.data ?? [];
   const [showAddChild, setShowAddChild] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    const [childrenRes, tasksRes] = await Promise.all([
-      api.get('/users/children'),
-      api.get('/tasks'),
-    ]);
-    setChildren(childrenRes.data);
-    setTasks(tasksRes.data);
+  // One cached allowance query per child (same keys as useAllowance, so an
+  // adjustment/approval invalidation refreshes them). Balances fill in as they
+  // arrive rather than blocking the whole screen.
+  const allowanceResults = useQueries({
+    queries: children.map((c: Child) => ({
+      queryKey: keys.allowance(c.id),
+      queryFn: () => api.get(`/allowance/${c.id}`).then((r) => r.data as Allowance),
+    })),
+  });
+  const balances: Record<string, Allowance | null> = {};
+  children.forEach((c: Child, i: number) => {
+    balances[c.id] = allowanceResults[i]?.data ?? null;
+  });
 
-    const allowances = await Promise.all(
-      childrenRes.data.map((c: Child) =>
-        api.get(`/allowance/${c.id}`).then(r => [c.id, r.data] as const).catch(() => [c.id, null] as const)
-      )
-    );
-    setBalances(Object.fromEntries(allowances));
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-screen text-ink-400">Loading…</div>;
+  const pending = childrenQuery.isPending || tasksQuery.isPending;
+  const isError = childrenQuery.isError || tasksQuery.isError;
+  const retry = () => { childrenQuery.refetch(); tasksQuery.refetch(); };
+  if (pending || isError) {
+    return <QueryBoundary isPending={pending} isError={isError} onRetry={retry}>{null}</QueryBoundary>;
   }
 
   // A per-unit definition stays PENDING in the pool forever; it is not an
@@ -134,7 +136,7 @@ export default function ParentDashboard() {
             <h2 className="text-[15px] font-bold text-ink-900 mb-2.5">Needs Approval</h2>
             <div className="space-y-2.5">
               {pendingApprovals.map(task => (
-                <TaskCard key={task.id} task={task} role="PARENT" onUpdate={refresh} />
+                <TaskCard key={task.id} task={task} role="PARENT" />
               ))}
             </div>
           </section>
@@ -146,7 +148,7 @@ export default function ParentDashboard() {
             <h2 className="text-[15px] font-bold text-ink-900 mb-2.5">Pay-per-item Chores</h2>
             <div className="space-y-2.5">
               {perUnitChores.map(task => (
-                <TaskCard key={task.id} task={task} role="PARENT" onUpdate={refresh} />
+                <TaskCard key={task.id} task={task} role="PARENT" />
               ))}
             </div>
           </section>
@@ -171,7 +173,7 @@ export default function ParentDashboard() {
           ) : (
             <div className="space-y-2.5">
               {outstanding.map(task => (
-                <TaskCard key={task.id} task={task} role="PARENT" onUpdate={refresh} />
+                <TaskCard key={task.id} task={task} role="PARENT" />
               ))}
             </div>
           )}
@@ -179,7 +181,7 @@ export default function ParentDashboard() {
       </main>
 
       {showAddChild && (
-        <AddChildModal onClose={() => setShowAddChild(false)} onAdded={refresh} />
+        <AddChildModal onClose={() => setShowAddChild(false)} />
       )}
     </>
   );

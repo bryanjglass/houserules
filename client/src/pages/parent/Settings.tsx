@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import api from '../../api/client';
-import type { TrustedDevice } from '../../types/models';
+import { useState, useEffect, useMemo } from 'react';
+import { useHouseholdCode, useDevices, useTimezone } from '../../api/queries';
+import { useRotateHouseholdCode, useSaveTimezone, useRevokeDevice } from '../../api/mutations';
+import Loading from '../../components/Loading';
 
 // The full IANA list when the browser supports it, else a small fallback. The
 // detected zone and UTC are always included so the saved value is selectable.
@@ -23,45 +24,36 @@ function timezoneOptions(detected: string): string[] {
 }
 
 export default function Settings() {
-  const [code, setCode] = useState('');
-  const [devices, setDevices] = useState<TrustedDevice[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [rotating, setRotating] = useState(false);
+  const codeQuery = useHouseholdCode();
+  const devicesQuery = useDevices();
+  const tzQuery = useTimezone();
+  const rotateCode = useRotateHouseholdCode();
+  const saveTimezone = useSaveTimezone();
+  const revokeDevice = useRevokeDevice();
+
   const [copied, setCopied] = useState(false);
+  const [tzSaved, setTzSaved] = useState(false);
 
   const detectedTz = useMemo(() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
   }, []);
   const tzOptions = useMemo(() => timezoneOptions(detectedTz), [detectedTz]);
+
+  // Local editable zone, seeded from the saved value once it loads. Treat the
+  // UTC default as "unset" and prefill the browser-detected zone.
   const [tz, setTz] = useState('');
-  const [tzSaving, setTzSaving] = useState(false);
-  const [tzSaved, setTzSaved] = useState(false);
-
-  const refresh = useCallback(async () => {
-    const [codeRes, devicesRes, tzRes] = await Promise.all([
-      api.get('/users/household-code'),
-      api.get('/auth/devices'),
-      api.get('/users/timezone'),
-    ]);
-    setCode(codeRes.data.householdCode || '');
-    setDevices(devicesRes.data);
-    // Treat the UTC default as "unset" and prefill the browser-detected zone.
-    const saved = tzRes.data.timezone as string;
+  useEffect(() => {
+    const saved = tzQuery.data;
+    if (saved === undefined) return;
     setTz(saved && saved !== 'UTC' ? saved : detectedTz);
-    setLoading(false);
-  }, [detectedTz]);
+  }, [tzQuery.data, detectedTz]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const code = codeQuery.data ?? '';
+  const devices = devicesQuery.data ?? [];
 
   const rotate = async () => {
     if (!confirm('Make a new house code? Kids will need the new code to sign in on a device they haven’t used before.')) return;
-    setRotating(true);
-    try {
-      const r = await api.post('/users/household-code/rotate');
-      setCode(r.data.householdCode);
-    } finally {
-      setRotating(false);
-    }
+    await rotateCode.mutateAsync();
   };
 
   const copy = async () => {
@@ -73,25 +65,19 @@ export default function Settings() {
   };
 
   const saveTz = async () => {
-    setTzSaving(true);
     setTzSaved(false);
-    try {
-      await api.put('/users/timezone', { timezone: tz });
-      setTzSaved(true);
-      setTimeout(() => setTzSaved(false), 1500);
-    } finally {
-      setTzSaving(false);
-    }
+    await saveTimezone.mutateAsync(tz);
+    setTzSaved(true);
+    setTimeout(() => setTzSaved(false), 1500);
   };
 
   const revoke = async (id: string) => {
     if (!confirm('Remove this trusted device? That device will need the house code and a PIN to sign in again.')) return;
-    await api.delete(`/auth/devices/${id}`);
-    setDevices(devices.filter(d => d.id !== id));
+    await revokeDevice.mutateAsync(id);
   };
 
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-screen text-ink-400">Loading…</div>;
+  if (codeQuery.isPending || devicesQuery.isPending || tzQuery.isPending) {
+    return <Loading />;
   }
 
   return (
@@ -111,10 +97,10 @@ export default function Settings() {
           </div>
           <button
             onClick={rotate}
-            disabled={rotating}
+            disabled={rotateCode.isPending}
             className="text-sm text-rose-600 font-semibold hover:text-rose-500 transition disabled:opacity-50"
           >
-            {rotating ? 'Generating…' : 'Generate a new code'}
+            {rotateCode.isPending ? 'Generating…' : 'Generate a new code'}
           </button>
         </section>
 
@@ -135,8 +121,8 @@ export default function Settings() {
                 <option key={z} value={z}>{z}</option>
               ))}
             </select>
-            <button onClick={saveTz} disabled={tzSaving} className="btn-ghost disabled:opacity-50">
-              {tzSaving ? 'Saving…' : tzSaved ? 'Saved!' : 'Save'}
+            <button onClick={saveTz} disabled={saveTimezone.isPending} className="btn-ghost disabled:opacity-50">
+              {saveTimezone.isPending ? 'Saving…' : tzSaved ? 'Saved!' : 'Save'}
             </button>
           </div>
         </section>

@@ -1,39 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
-import api from '../../api/client';
+import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useTasks, useAllowance, useGoal } from '../../api/queries';
 import TaskCard from '../../components/TaskCard';
 import SavingsGoalCard from '../../components/SavingsGoalCard';
+import Loading from '../../components/Loading';
 import { Avatar } from '../../components/Brand';
 import { StarIcon } from '../../components/Icons';
 import { formatCents } from '../../lib/money';
-import type { TaskView, GoalView } from '../../types/models';
 
 const STATUS_ORDER: Record<string, number> = { REJECTED: 0, PENDING: 1, COMPLETED: 2, APPROVED: 3 };
 
 export default function ChildDashboard() {
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<TaskView[]>([]);
-  const [balance, setBalance] = useState<number | null>(null);
-  const [goal, setGoal] = useState<GoalView | null>(null);
+  const tasksQuery = useTasks();
+  const allowanceQuery = useAllowance(user?.id);
+  const goalQuery = useGoal(user?.id);
   const [tab, setTab] = useState<'todo' | 'done'>('todo');
-  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    const [tasksRes, allowanceRes, goalRes] = await Promise.all([
-      api.get('/tasks'),
-      user ? api.get(`/allowance/${user.id}`).catch(() => null) : Promise.resolve(null),
-      user ? api.get(`/goals/${user.id}`).catch(() => null) : Promise.resolve(null),
-    ]);
-    setTasks(tasksRes.data);
-    setBalance(allowanceRes?.data?.balance ?? null);
-    setGoal(goalRes?.data?.goal ?? null);
-    setLoading(false);
-  }, [user]);
+  // Tasks gate the screen; balance and goal are best-effort (null while loading
+  // or on error), mirroring the prior resilient behavior.
+  const tasks = tasksQuery.data ?? [];
+  const balance = allowanceQuery.data?.balance ?? null;
+  const goal = goalQuery.data ?? null;
 
-  useEffect(() => { refresh(); }, [refresh]);
-
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-screen text-ink-400 text-xl">Loading…</div>;
+  if (tasksQuery.isPending) {
+    return <Loading />;
   }
 
   // Unclaimed household chores anyone can grab (server only returns the child's
@@ -104,7 +95,7 @@ export default function ChildDashboard() {
             </h2>
             <div className="flex flex-col gap-2.5 mt-2.5">
               {poolTasks.map(task => (
-                <TaskCard key={task.id} task={task} role="CHILD" onUpdate={refresh} />
+                <TaskCard key={task.id} task={task} role="CHILD" />
               ))}
             </div>
           </div>
@@ -121,7 +112,7 @@ export default function ChildDashboard() {
         ) : (
           <div className="flex flex-col gap-2.5 mt-2.5">
             {list.map(task => (
-              <TaskCard key={task.id} task={task} role="CHILD" onUpdate={refresh} />
+              <TaskCard key={task.id} task={task} role="CHILD" />
             ))}
           </div>
         )}

@@ -1,8 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/client';
 import Thumb from './Thumb';
 import { formatCents } from '../lib/money';
+import {
+  useMarkTaskDone,
+  useParentCompleteTask,
+  useApproveTask,
+  useRejectTask,
+  useClaimTask,
+  useLogUnits,
+  useDeleteTask,
+} from '../api/mutations';
 import type { Role } from '../types/domain';
 import type { TaskView } from '../types/models';
 
@@ -43,11 +51,9 @@ function dueLabel(task: TaskView): string {
 export default function TaskCard({
   task,
   role,
-  onUpdate,
 }: {
   task: TaskView;
   role: Role;
-  onUpdate: () => void;
 }) {
   // A per-unit chore has two row kinds: the open definition (in the pool, no
   // assignee) that children log against, and a per-child completion instance.
@@ -58,32 +64,37 @@ export default function TaskCard({
   const [logQty, setLogQty] = useState('1');
   const [reviewQty, setReviewQty] = useState(String(task.quantity ?? 1));
 
-  const handleMarkDone = async () => { await api.put(`/tasks/${task.id}`, {}); onUpdate(); };
-  const handleParentComplete = async () => { await api.post(`/tasks/${task.id}/complete`); onUpdate(); };
-  const handleApprove = async () => {
-    await api.post(`/tasks/${task.id}/approve`, isPerUnitCompletion ? { quantity: Number(reviewQty) } : {});
-    onUpdate();
-  };
-  const handleReject = async () => { await api.post(`/tasks/${task.id}/reject`); onUpdate(); };
+  // Mutations invalidate the shared cache on success, so every subscribed list
+  // (parent dashboard, child dashboard, child detail) refreshes automatically.
+  const markDone = useMarkTaskDone();
+  const parentComplete = useParentCompleteTask();
+  const approve = useApproveTask();
+  const reject = useRejectTask();
+  const claim = useClaimTask();
+  const logUnits = useLogUnits();
+  const deleteTask = useDeleteTask();
+
+  const handleMarkDone = () => markDone.mutate(task.id);
+  const handleParentComplete = () => parentComplete.mutate(task.id);
+  const handleApprove = () =>
+    approve.mutate({ id: task.id, ...(isPerUnitCompletion ? { quantity: Number(reviewQty) } : {}) });
+  const handleReject = () => reject.mutate(task.id);
   const handleLog = async () => {
     const n = Number(logQty);
     if (!Number.isInteger(n) || n < 1) { alert('Enter a whole number of at least 1'); return; }
-    await api.post(`/tasks/${task.id}/log-units`, { quantity: n });
+    await logUnits.mutateAsync({ id: task.id, quantity: n });
     setLogQty('1');
-    onUpdate();
   };
   const handleGrab = async () => {
     try {
-      await api.post(`/tasks/${task.id}/claim`);
+      await claim.mutateAsync(task.id);
     } catch (err: any) {
       if (err.response?.status === 409) alert('Someone already grabbed this chore!');
     }
-    onUpdate();
   };
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!confirm(`Delete "${task.title}"?`)) return;
-    await api.delete(`/tasks/${task.id}`);
-    onUpdate();
+    deleteTask.mutate(task.id);
   };
 
   const pill = statusPill(task);
