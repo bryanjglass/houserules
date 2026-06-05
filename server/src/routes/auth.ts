@@ -8,7 +8,9 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { authLimiter } from '../middleware/rateLimit.js';
-import { generateHouseholdCode, generateDeviceToken, hashToken } from '../lib/codes.js';
+import { generateDeviceToken, hashToken, uniqueHouseholdCode } from '../lib/codes.js';
+import { validateBody } from '../lib/validation.js';
+import { registerSchema } from '../schemas/auth.js';
 
 const router = Router();
 
@@ -41,15 +43,6 @@ function signToken(user: Pick<User, 'id' | 'role' | 'name' | 'parentId'>): strin
     process.env.JWT_SECRET as string,
     { expiresIn: '24h' }
   );
-}
-
-async function uniqueHouseholdCode(): Promise<string> {
-  for (let i = 0; i < 8; i++) {
-    const code = generateHouseholdCode();
-    const exists = await prisma.user.findUnique({ where: { householdCode: code } });
-    if (!exists) return code;
-  }
-  throw new Error('Could not generate a unique household code');
 }
 
 // Resolve a valid (non-expired) trusted device from the request's device cookie.
@@ -190,9 +183,8 @@ router.post('/device-login', authLimiter, async (req, res) => {
 });
 
 // First-time parent registration
-router.post('/register', authLimiter, async (req, res) => {
+router.post('/register', authLimiter, validateBody(registerSchema), async (req, res) => {
   const { name, email, password } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'name, email, and password required' });
 
   try {
     const existing = await prisma.user.findUnique({ where: { email } });

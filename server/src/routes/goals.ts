@@ -5,6 +5,9 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { getBalance } from '../lib/balance.js';
+import { validateBody } from '../lib/validation.js';
+import { getChildOrFail } from '../lib/guards.js';
+import { goalCreateSchema, goalUpdateSchema } from '../schemas/goal.js';
 
 const router = Router();
 
@@ -13,20 +16,6 @@ router.use(requireAuth);
 // A goal is "current" while it has not been cashed in. v1 allows only one of
 // these per child; the multi-goal future is just lifting that guard.
 const OPEN_STATUSES = ['ACTIVE', 'REDEEM_REQUESTED'];
-
-// Resolve a child and confirm it belongs to the requesting parent.
-async function getChildOrFail(childId: string, parentId: string, res: Response) {
-  const child = await prisma.user.findUnique({ where: { id: childId } });
-  if (!child || child.role !== 'CHILD') {
-    res.status(404).json({ error: 'Child not found' });
-    return null;
-  }
-  if (child.parentId !== parentId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return null;
-  }
-  return child;
-}
 
 // Resolve a goal with its child loaded for ownership checks.
 async function getGoal(goalId: string, res: Response) {
@@ -39,12 +28,6 @@ async function getGoal(goalId: string, res: Response) {
     return null;
   }
   return goal;
-}
-
-function parseTarget(value: unknown): number | null {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n <= 0) return null;
-  return n;
 }
 
 // Shape a goal for the client with derived progress (balance is never stored on
@@ -85,14 +68,12 @@ router.get('/:childId', async (req, res) => {
 });
 
 // POST /api/goals/:childId — parent creates a goal for their child.
-router.post('/:childId', requireRole('PARENT'), async (req, res) => {
+router.post('/:childId', requireRole('PARENT'), validateBody(goalCreateSchema), async (req, res) => {
   const child = await getChildOrFail(req.params.childId, req.user!.id, res);
   if (!child) return;
 
-  const { title } = req.body;
-  if (!title || !String(title).trim()) return res.status(400).json({ error: 'title required' });
-  const targetAmount = parseTarget(req.body.targetAmount);
-  if (targetAmount === null) return res.status(400).json({ error: 'targetAmount must be a positive integer (cents)' });
+  // title is trimmed/non-empty and targetAmount a positive integer (cents).
+  const { title, targetAmount } = req.body;
 
   // One open goal per child in v1.
   const existing = await prisma.savingsGoal.findFirst({
@@ -104,7 +85,7 @@ router.post('/:childId', requireRole('PARENT'), async (req, res) => {
     data: {
       childId: child.id,
       createdById: req.user!.id,
-      title: String(title).trim(),
+      title,
       targetAmount,
     },
   });
@@ -113,22 +94,17 @@ router.post('/:childId', requireRole('PARENT'), async (req, res) => {
 });
 
 // PATCH /api/goals/:goalId — parent edits title/target on a non-redeemed goal.
-router.patch('/:goalId', requireRole('PARENT'), async (req, res) => {
+router.patch('/:goalId', requireRole('PARENT'), validateBody(goalUpdateSchema), async (req, res) => {
   const goal = await getGoal(req.params.goalId, res);
   if (!goal) return;
   if (goal.child.parentId !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   if (goal.status === 'REDEEMED') return res.status(400).json({ error: 'A redeemed goal cannot be edited' });
 
+  // Apply only the validated fields that were provided (trimmed title /
+  // positive-integer targetAmount).
   const data: { title?: string; targetAmount?: number } = {};
-  if (req.body.title !== undefined) {
-    if (!String(req.body.title).trim()) return res.status(400).json({ error: 'title required' });
-    data.title = String(req.body.title).trim();
-  }
-  if (req.body.targetAmount !== undefined) {
-    const targetAmount = parseTarget(req.body.targetAmount);
-    if (targetAmount === null) return res.status(400).json({ error: 'targetAmount must be a positive integer (cents)' });
-    data.targetAmount = targetAmount;
-  }
+  if (req.body.title !== undefined) data.title = req.body.title;
+  if (req.body.targetAmount !== undefined) data.targetAmount = req.body.targetAmount;
 
   const updated = await prisma.savingsGoal.update({ where: { id: goal.id }, data });
   const balance = await getBalance(goal.childId);

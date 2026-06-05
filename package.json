@@ -12,6 +12,7 @@
     "db:seed": "npm run db:seed --workspace=server",
     "db:reset": "npm run db:reset --workspace=server",
     "typecheck": "npm run typecheck --workspace=server && npm run typecheck --workspace=client",
+    "test": "npm run test --workspace=server",
     "cap:sync": "npx cap sync android",
     "cap:build": "npx cap build android",
     "cap:open": "npx cap open android"
