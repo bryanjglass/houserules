@@ -9,6 +9,7 @@ import {
   addDays,
   addMonths,
   stampLocalNoon,
+  parseDateInput,
 } from './tz.js';
 
 const CHICAGO = 'America/Chicago';
@@ -86,6 +87,30 @@ describe('addDays / addMonths', () => {
   it('overflows day-31 monthly into the following month (documented JS quirk)', () => {
     // Feb has 28 days in 2026, so Jan 31 + 1 month overflows to Mar 3.
     expect(addMonths({ y: 2026, m: 1, d: 31 }, 1)).toEqual({ y: 2026, m: 3, d: 3 });
+  });
+});
+
+describe('parseDateInput', () => {
+  it('reads a date-only string as the literal household day (no UTC slip)', () => {
+    // The bug: new Date("2026-06-06") is UTC midnight -> 6/5 in EDT. parseDateInput
+    // must keep it 6/6, and stamping it must round-trip to 6/6.
+    const day = parseDateInput('2026-06-06', CHICAGO);
+    expect(day).toEqual({ y: 2026, m: 6, d: 6 });
+    expect(calDayInTz(stampLocalNoon(day!, 'America/New_York'), 'America/New_York'))
+      .toEqual({ y: 2026, m: 6, d: 6 });
+  });
+
+  it('resolves a Date input via the household timezone', () => {
+    // 02:00Z on 6/15 is still 6/14 in Chicago.
+    expect(parseDateInput(new Date('2026-06-15T02:00:00Z'), CHICAGO))
+      .toEqual({ y: 2026, m: 6, d: 14 });
+  });
+
+  it('returns null for empty/invalid input', () => {
+    expect(parseDateInput('', CHICAGO)).toBeNull();
+    expect(parseDateInput(null, CHICAGO)).toBeNull();
+    expect(parseDateInput(undefined, CHICAGO)).toBeNull();
+    expect(parseDateInput('not-a-date', CHICAGO)).toBeNull();
   });
 });
 

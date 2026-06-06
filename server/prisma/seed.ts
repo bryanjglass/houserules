@@ -1,6 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { generateHouseholdCode } from '../src/lib/codes.js';
+import { familyToday } from '../src/lib/tz.js';
+import { firstOccurrence } from '../src/lib/recurrence.js';
 
 const prisma = new PrismaClient();
 
@@ -63,6 +65,10 @@ async function main() {
 
   const existingTasks = await prisma.task.count();
   if (existingTasks === 0) {
+    // Recurring tasks are anchored to a concrete first scheduled occurrence (in
+    // the household timezone) so they generate occurrences and show on the calendar.
+    const tz = parent.timezone || 'UTC';
+    const today = familyToday(tz);
     await prisma.task.createMany({
       data: [
         {
@@ -73,6 +79,7 @@ async function main() {
           createdById: parent.id,
           isRecurring: true,
           recurrence: 'WEEKLY',
+          dueDate: firstOccurrence(today, 'WEEKLY', null, tz),
         },
         {
           title: 'Clean your room',
@@ -87,6 +94,7 @@ async function main() {
           createdById: parent.id,
           isRecurring: true,
           recurrence: 'DAILY',
+          dueDate: firstOccurrence(today, 'DAILY', null, tz),
         },
         {
           title: 'Feed the dog',
@@ -94,6 +102,7 @@ async function main() {
           createdById: parent.id,
           isRecurring: true,
           recurrence: 'DAILY',
+          dueDate: firstOccurrence(today, 'DAILY', null, tz),
         },
       ],
     });

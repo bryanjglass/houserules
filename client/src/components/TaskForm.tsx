@@ -211,7 +211,7 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
               )}
             </div>
             <div>
-              <label className="label">Due Date</label>
+              <label className="label">{isRecurring ? 'Starts on' : 'Due Date'} <span className="text-ink-400 font-medium">(optional)</span></label>
               <div className="flex items-center gap-2 border-[1.5px] border-line rounded-[14px] px-3 py-2.5 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand-50 transition">
                 <CalendarIcon size={16} className="text-brand shrink-0" />
                 <input
