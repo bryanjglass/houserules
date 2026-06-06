@@ -5,9 +5,9 @@ import { formatCents } from '../lib/money';
 import type { CalendarEvent } from '../types/models';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+const MONTHS_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
 const STATUS_DOT: Record<string, string> = {
@@ -21,22 +21,40 @@ function ymdKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
+// The Sunday (00:00 local) of the week containing `date`.
+function startOfWeek(date: Date): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+// Human label for the visible week, spanning month/year boundaries correctly.
+function weekRangeLabel(start: Date, end: Date): string {
+  const sM = MONTHS_SHORT[start.getMonth()];
+  const eM = MONTHS_SHORT[end.getMonth()];
+  const sY = start.getFullYear();
+  const eY = end.getFullYear();
+  if (sY !== eY) return `${sM} ${start.getDate()}, ${sY} – ${eM} ${end.getDate()}, ${eY}`;
+  if (start.getMonth() !== end.getMonth()) return `${sM} ${start.getDate()} – ${eM} ${end.getDate()}, ${eY}`;
+  return `${sM} ${start.getDate()} – ${end.getDate()}, ${eY}`;
+}
+
 export default function Calendar() {
   const { user } = useAuth();
   const isParent = user?.role === 'PARENT';
   const today = new Date();
 
-  const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(today));
 
-  // Build a stable 6-week (42-cell) grid covering the visible month.
-  const cells = useMemo(() => {
-    const year = viewDate.getFullYear();
-    const month = viewDate.getMonth();
-    const leading = new Date(year, month, 1).getDay();
-    return Array.from({ length: 42 }, (_, i) => new Date(year, month, 1 - leading + i));
-  }, [viewDate]);
+  // The seven days of the visible week, Sunday → Saturday.
+  const cells = useMemo(
+    () => Array.from({ length: 7 }, (_, i) =>
+      new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i)
+    ),
+    [weekStart]
+  );
 
-  // The visible range, keyed so each month's events are cached separately.
+  // The visible range, keyed so each week's events are cached separately.
   const startISO = cells[0].toISOString();
   const lastCell = cells[cells.length - 1];
   const endISO = new Date(
@@ -56,25 +74,22 @@ export default function Calendar() {
     return map;
   }, [events]);
 
-  const goToMonth = (delta: number) =>
-    setViewDate(d => new Date(d.getFullYear(), d.getMonth() + delta, 1));
-  const goToToday = () =>
-    setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
-
-  const viewMonth = viewDate.getMonth();
+  const goToWeek = (delta: number) =>
+    setWeekStart(d => new Date(d.getFullYear(), d.getMonth(), d.getDate() + delta * 7));
+  const goToToday = () => setWeekStart(startOfWeek(today));
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-        {/* Month navigation */}
+        {/* Week navigation */}
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-extrabold text-ink-900">
-            {MONTHS[viewMonth]} {viewDate.getFullYear()}
+            {weekRangeLabel(cells[0], lastCell)}
           </h2>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => goToMonth(-1)}
+              onClick={() => goToWeek(-1)}
               className="w-9 h-9 rounded-[10px] bg-white border border-line text-ink-500 hover:bg-appbg transition"
-              aria-label="Previous month"
+              aria-label="Previous week"
             >
               ‹
             </button>
@@ -85,66 +100,74 @@ export default function Calendar() {
               Today
             </button>
             <button
-              onClick={() => goToMonth(1)}
+              onClick={() => goToWeek(1)}
               className="w-9 h-9 rounded-[10px] bg-white border border-line text-ink-500 hover:bg-appbg transition"
-              aria-label="Next month"
+              aria-label="Next week"
             >
               ›
             </button>
           </div>
         </div>
 
-        {/* Weekday header */}
-        <div className="grid grid-cols-7 gap-px text-center">
-          {WEEKDAYS.map(d => (
-            <div key={d} className="text-xs font-bold text-ink-400 py-1">{d}</div>
-          ))}
-        </div>
-
-        {/* Calendar grid */}
-        <div className="grid grid-cols-7 gap-px bg-line rounded-xl overflow-hidden border border-line">
+        {/* Week day rows */}
+        <div className="space-y-2">
           {cells.map(cell => {
-            const inMonth = cell.getMonth() === viewMonth;
             const isToday = ymdKey(cell) === ymdKey(today);
             const dayEvents = eventsByDay[ymdKey(cell)] || [];
             return (
               <div
                 key={ymdKey(cell)}
-                className={`min-h-[5.5rem] p-1.5 ${inMonth ? 'bg-white' : 'bg-appbg'}`}
+                className="rounded-xl border border-line bg-white overflow-hidden"
               >
-                <div className="flex justify-end">
-                  <span
-                    className={`text-xs w-5 h-5 flex items-center justify-center rounded-full ${
-                      isToday ? 'bg-brand text-white font-bold'
-                        : inMonth ? 'text-ink-700' : 'text-ink-300'
+                <div className="flex">
+                  {/* Date column */}
+                  <div
+                    className={`w-20 shrink-0 flex flex-col items-center justify-center py-3 border-r border-line ${
+                      isToday ? 'bg-brand-50' : 'bg-appbg'
                     }`}
                   >
-                    {cell.getDate()}
-                  </span>
-                </div>
-                <div className="mt-1 space-y-1">
-                  {dayEvents.map(ev => (
-                    <div
-                      key={ev.id}
-                      title={`${ev.title}${ev.projected ? ' (upcoming)' : ''}`}
-                      className={`text-[10px] leading-tight px-1 py-0.5 rounded border truncate ${
-                        ev.projected
-                          ? 'border-dashed border-ink-300 bg-appbg text-ink-400'
-                          : 'border-brand-100 bg-brand-50 text-ink-900'
+                    <span className="text-xs font-bold uppercase text-ink-400">
+                      {WEEKDAYS[cell.getDay()]}
+                    </span>
+                    <span
+                      className={`mt-0.5 w-8 h-8 flex items-center justify-center rounded-full text-lg ${
+                        isToday ? 'bg-brand text-white font-bold' : 'text-ink-900 font-semibold'
                       }`}
                     >
-                      <span className="flex items-center gap-1">
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[ev.status] || 'bg-ink-300'}`} />
-                        <span className="truncate">{ev.title}</span>
-                      </span>
-                      {isParent && ev.assignedTo && (
-                        <span className="block truncate opacity-70">{ev.assignedTo.name}</span>
-                      )}
-                      {ev.dollarAmount ? (
-                        <span className="block text-money-600 font-bold">{formatCents(ev.dollarAmount)}</span>
-                      ) : null}
-                    </div>
-                  ))}
+                      {cell.getDate()}
+                    </span>
+                  </div>
+                  {/* Tasks for the day */}
+                  <div className="flex-1 p-2 space-y-1 min-h-[3.5rem]">
+                    {dayEvents.length === 0 ? (
+                      <div className="h-full flex items-center px-1 text-xs text-ink-300">
+                        No tasks
+                      </div>
+                    ) : (
+                      dayEvents.map(ev => (
+                        <div
+                          key={ev.id}
+                          title={`${ev.title}${ev.projected ? ' (upcoming)' : ''}`}
+                          className={`text-xs leading-tight px-2 py-1 rounded border ${
+                            ev.projected
+                              ? 'border-dashed border-ink-300 bg-appbg text-ink-400'
+                              : 'border-brand-100 bg-brand-50 text-ink-900'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[ev.status] || 'bg-ink-300'}`} />
+                            <span className="font-medium">{ev.title}</span>
+                            {ev.dollarAmount ? (
+                              <span className="ml-auto shrink-0 text-money-600 font-bold">{formatCents(ev.dollarAmount)}</span>
+                            ) : null}
+                          </span>
+                          {isParent && ev.assignedTo && (
+                            <span className="block truncate opacity-70 pl-3">{ev.assignedTo.name}</span>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             );
