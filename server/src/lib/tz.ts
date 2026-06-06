@@ -51,6 +51,28 @@ export function dueDay(date: Date | string, tz: string): CalDay {
   return calDayInTz(new Date(date), tz);
 }
 
+// Interpret a user-supplied due-date value as a calendar day in the household
+// timezone. A date-only "YYYY-MM-DD" string is read by its digits (NOT via
+// new Date(), which parses it as UTC midnight and slips to the previous day in
+// negative-offset zones). A Date is resolved with calDayInTz. Empty/invalid
+// values return null. Callers stamp the result with stampLocalNoon to store it.
+export function parseDateInput(input: string | Date | null | undefined, tz: string): CalDay | null {
+  if (input == null || input === '') return null;
+  if (input instanceof Date) {
+    return isNaN(input.getTime()) ? null : calDayInTz(input, tz);
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(input.trim());
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return { y, m: mo, d };
+  }
+  const parsed = new Date(input);
+  return isNaN(parsed.getTime()) ? null : calDayInTz(parsed, tz);
+}
+
 // Negative if a is before b, 0 if same day, positive if a is after b.
 export function compareDays(a: CalDay, b: CalDay): number {
   if (a.y !== b.y) return a.y - b.y;

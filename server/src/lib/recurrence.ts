@@ -62,3 +62,29 @@ export function nextDueDate(
   }
   return stampLocalNoon(next, tz);
 }
+
+// The first scheduled occurrence ON OR AFTER `start` (a calendar day), stamped at
+// household-local noon. DAILY / MONTHLY / WEEKLY-with-no-selected-days start on
+// `start` itself; WEEKLY-with-days snaps forward to the first selected weekday on
+// or after `start`. Complements nextDueDate, which finds the day strictly after a
+// current one. Used to anchor a recurring task to a concrete first instance.
+export function firstOccurrence(
+  start: CalDay,
+  recurrence: string | null,
+  weeklyDays: string | null | undefined,
+  tz: string
+): Date {
+  let day = start;
+  if (recurrence === 'WEEKLY') {
+    const days = parseWeeklyDays(weeklyDays);
+    if (days.length > 0) {
+      const daySet = new Set(days);
+      // `start` is included; walk forward at most 6 days to the next selected one.
+      for (let i = 0; i < 7; i++) {
+        if (daySet.has(dayOfWeek(day))) break;
+        day = addDays(day, 1);
+      }
+    }
+  }
+  return stampLocalNoon(day, tz);
+}

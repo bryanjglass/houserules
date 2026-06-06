@@ -14,9 +14,11 @@ import {
   addDays,
   compareDays,
   isFutureDay,
+  parseDateInput,
+  stampLocalNoon,
   type CalDay,
 } from '../lib/tz.js';
-import { nextDueDate, parseWeeklyDays } from '../lib/recurrence.js';
+import { nextDueDate, parseWeeklyDays, firstOccurrence } from '../lib/recurrence.js';
 
 const router = Router();
 
@@ -162,6 +164,50 @@ async function backfillCatchUpOccurrences(where: Prisma.TaskWhereInput, tz: stri
   }
 }
 
+// Heal recurring tasks that have no due date (e.g. created before due dates were
+// always anchored, or seeded without one): without a date they have no schedule
+// anchor, so they never generate occurrences or appear on the calendar. For each
+// such assigned, non-up-for-grabs recurring chain whose newest instance is
+// dateless, stamp its due date to the first scheduled occurrence on/after today.
+// Idempotent — a chain that already has any dated instance is left untouched.
+async function anchorUndatedRecurring(where: Prisma.TaskWhereInput, tz: string): Promise<void> {
+  const candidates = await prisma.task.findMany({
+    where: {
+      AND: [
+        where,
+        {
+          isRecurring: true,
+          isUpForGrabs: false,
+          assignedToId: { not: null },
+          dueDate: null,
+          recurrence: { not: null },
+        },
+      ],
+    },
+  });
+  if (candidates.length === 0) return;
+
+  // Group by chain root; only heal a chain that has NO dated instance anywhere.
+  const byRoot = new Map<string, Task>();
+  for (const c of candidates) {
+    const root = c.templateId || c.id;
+    const existing = byRoot.get(root);
+    if (!existing || c.createdAt > existing.createdAt) byRoot.set(root, c);
+  }
+
+  const today = familyToday(tz);
+  for (const [root, rep] of byRoot) {
+    // Skip chains that already have a dated instance — nothing to heal there.
+    const dated = await prisma.task.count({
+      where: { OR: [{ id: root }, { templateId: root }], dueDate: { not: null } },
+    });
+    if (dated > 0) continue;
+    // Deterministic value, so concurrent reads converge on the same anchor.
+    const due = firstOccurrence(today, rep.recurrence, rep.weeklyDays, tz);
+    await prisma.task.update({ where: { id: rep.id }, data: { dueDate: due } });
+  }
+}
+
 // Ensure every assigned (non-up-for-grabs) recurring chain always has one live
 // instance, so the chore never disappears from the parent's lists and stays
 // editable once prior instances are completed/approved. When a chain has no
@@ -257,8 +303,10 @@ router.get('/', async (req, res) => {
     // Children's tasks, plus the parent's own up-for-grabs chores (open chores
     // have no assignee, so they'd be missed by the assignedToId filter alone).
     const where = { OR: [{ assignedToId: { in: childIds } }, { createdById: user.id }] };
-    // Generate on read: backfill missed catch-up occurrences, then ensure every
-    // assigned recurring chain has a live tip so nothing disappears.
+    // Generate on read: anchor any dateless recurring chains, backfill missed
+    // catch-up occurrences, then ensure every assigned recurring chain has a live
+    // tip so nothing disappears.
+    await anchorUndatedRecurring(where, tz);
     await backfillCatchUpOccurrences(where, tz);
     await ensureLiveTips(where, tz);
     const tasks = await prisma.task.findMany({
@@ -276,6 +324,7 @@ router.get('/', async (req, res) => {
       { isUpForGrabs: true, assignedToId: null, createdById: user.parentId as string },
     ],
   };
+  await anchorUndatedRecurring(where, tz);
   await backfillCatchUpOccurrences(where, tz);
   await ensureLiveTips(where, tz);
   const tasks = await prisma.task.findMany({
@@ -381,6 +430,13 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireRole('PARENT'), validateBody(taskCreateSchema), async (req, res) => {
   const { title, description, dollarAmount, assignedToId, dueDate, isRecurring, recurrence, weeklyDays, isUpForGrabs, isPerUnit, unitReward, catchUp } = req.body;
 
+  // Resolve the household timezone once and interpret the user's date as a
+  // household calendar day, stamped at local noon (the same representation
+  // generated occurrences use) so it never slips a day across the UTC boundary.
+  const tz = await tzForUser(req.user!);
+  const startDay = parseDateInput(dueDate, tz);
+  const startStamp = startDay ? stampLocalNoon(startDay, tz) : null;
+
   // Per-unit chore: an open, per-item-priced definition that lives in the
   // household pool forever. No assignee, never recurring, dollarAmount stays
   // null (the credit comes from unitReward * quantity at approval).
@@ -397,7 +453,7 @@ router.post('/', requireRole('PARENT'), validateBody(taskCreateSchema), async (r
         isUpForGrabs: true,
         assignedToId: null,
         createdById: req.user!.id,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        dueDate: startStamp,
       },
     });
     return res.status(201).json(task);
@@ -418,6 +474,14 @@ router.post('/', requireRole('PARENT'), validateBody(taskCreateSchema), async (r
 
   const normalizedWeeklyDays =
     isRecurring && recurrence === 'WEEKLY' ? parseWeeklyDays(Array.isArray(weeklyDays) ? weeklyDays.join(',') : weeklyDays) : [];
+  const weeklyDaysStr = normalizedWeeklyDays.length ? normalizedWeeklyDays.join(',') : null;
+
+  // A recurring task is always anchored to a concrete first scheduled occurrence:
+  // an empty date means "start today", and the first instance snaps to the
+  // schedule. A one-off task simply uses the chosen day (or none).
+  const finalDueDate = isRecurring
+    ? firstOccurrence(startDay ?? familyToday(tz), recurrence, weeklyDaysStr, tz)
+    : startStamp;
 
   const task = await prisma.task.create({
     data: {
@@ -428,10 +492,10 @@ router.post('/', requireRole('PARENT'), validateBody(taskCreateSchema), async (r
       assignedToId: upForGrabs ? null : assignedToId,
       isUpForGrabs: upForGrabs,
       createdById: req.user!.id,
-      dueDate: dueDate ? new Date(dueDate) : null,
+      dueDate: finalDueDate,
       isRecurring: Boolean(isRecurring),
       recurrence: isRecurring ? recurrence : null,
-      weeklyDays: normalizedWeeklyDays.length ? normalizedWeeklyDays.join(',') : null,
+      weeklyDays: weeklyDaysStr,
       // catch-up only applies to a recurring, assigned, non-up-for-grabs chore.
       catchUp: Boolean(isRecurring) && !upForGrabs && Boolean(assignedToId) && Boolean(catchUp),
     },
@@ -535,34 +599,62 @@ router.put('/:id', validateBody(taskUpdateSchema), async (req, res) => {
 
   const { title, description, dollarAmount, dueDate, assignedToId, isRecurring, recurrence, weeklyDays, isUpForGrabs, catchUp } = req.body;
 
+  const tz = await tzForTask(task);
+
+  // Effective recurrence settings after this edit (fall back to the stored task
+  // for any field not in the request).
+  const effectiveRecurring = isRecurring !== undefined ? Boolean(isRecurring) : task.isRecurring;
+  const effectiveRecurrence = isRecurring !== undefined
+    ? (Boolean(isRecurring) ? recurrence ?? null : null)
+    : task.recurrence;
+  const editedWeeklyDays = weeklyDays !== undefined;
+  const normalizedWeeklyDays =
+    effectiveRecurring && effectiveRecurrence === 'WEEKLY'
+      ? parseWeeklyDays(
+          editedWeeklyDays
+            ? (Array.isArray(weeklyDays) ? weeklyDays.join(',') : weeklyDays)
+            : task.weeklyDays
+        )
+      : [];
+  const effectiveWeeklyDaysStr = normalizedWeeklyDays.length ? normalizedWeeklyDays.join(',') : null;
+
   const data: Prisma.TaskUpdateInput = {
     ...(title && { title }),
     ...(description !== undefined && { description }),
     ...(dollarAmount !== undefined && { dollarAmount: dollarAmount || null }),
-    ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
     ...(assignedToId && { assignedTo: { connect: { id: assignedToId } } }),
     ...(isUpForGrabs !== undefined && { isUpForGrabs: Boolean(isUpForGrabs) }),
   };
 
   // Recurrence is edited as a unit: the toggle, the cadence, and (for weekly) the
-  // selected days. Serialize weeklyDays the same comma-separated way as create;
-  // turning recurrence off clears the cadence and days.
+  // selected days. Turning recurrence off clears the cadence and days.
   if (isRecurring !== undefined) {
-    const recurring = Boolean(isRecurring);
-    data.isRecurring = recurring;
-    data.recurrence = recurring ? recurrence ?? null : null;
-    const normalizedWeeklyDays =
-      recurring && recurrence === 'WEEKLY'
-        ? parseWeeklyDays(Array.isArray(weeklyDays) ? weeklyDays.join(',') : weeklyDays)
-        : [];
-    data.weeklyDays = normalizedWeeklyDays.length ? normalizedWeeklyDays.join(',') : null;
+    data.isRecurring = effectiveRecurring;
+    data.recurrence = effectiveRecurrence;
+    data.weeklyDays = effectiveWeeklyDaysStr;
+  } else if (editedWeeklyDays && effectiveRecurring && effectiveRecurrence === 'WEEKLY') {
+    data.weeklyDays = effectiveWeeklyDaysStr;
+  }
+
+  // Due date: normalize the chosen day to household-local noon. A recurring task
+  // re-anchors to its first scheduled occurrence on/after the chosen day (or its
+  // current day, or today) whenever the date, cadence, or weekly selection
+  // changes, so every materialized occurrence stays on-schedule.
+  const dueProvided = dueDate !== undefined;
+  const startDay = dueProvided ? parseDateInput(dueDate, tz) : null;
+  if (effectiveRecurring) {
+    if (dueProvided || isRecurring !== undefined || editedWeeklyDays) {
+      const anchor = startDay ?? (task.dueDate ? dueDay(task.dueDate, tz) : familyToday(tz));
+      data.dueDate = firstOccurrence(anchor, effectiveRecurrence, effectiveWeeklyDaysStr, tz);
+    }
+  } else if (dueProvided) {
+    data.dueDate = startDay ? stampLocalNoon(startDay, tz) : null;
   }
 
   // catch-up is only meaningful for a recurring, assigned, non-up-for-grabs chore.
   // Recompute whenever recurrence, assignment, up-for-grabs, or the flag itself
   // changes; turning recurrence off or making the chore up-for-grabs clears it.
   if (catchUp !== undefined || isRecurring !== undefined || isUpForGrabs !== undefined || assignedToId !== undefined) {
-    const effectiveRecurring = isRecurring !== undefined ? Boolean(isRecurring) : task.isRecurring;
     const effectiveUpForGrabs = isUpForGrabs !== undefined ? Boolean(isUpForGrabs) : task.isUpForGrabs;
     const effectiveAssignee = assignedToId ?? task.assignedToId;
     const wantCatchUp = catchUp !== undefined ? Boolean(catchUp) : task.catchUp;
