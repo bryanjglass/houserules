@@ -3,15 +3,15 @@ import { Link } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import { useChildren, useTasks } from '../../api/queries';
+import { useChildren, useChores } from '../../api/queries';
 import { keys } from '../../api/keys';
-import TaskCard from '../../components/TaskCard';
+import ChoreCard from '../../components/ChoreCard';
 import AddChildModal from './AddChildModal';
 import QueryBoundary from '../../components/QueryBoundary';
 import { Avatar } from '../../components/Brand';
 import { BellIcon, PlusIcon } from '../../components/Icons';
 import { formatCents } from '../../lib/money';
-import type { Child, TaskView, Allowance } from '../../types/models';
+import type { Child, Allowance } from '../../types/models';
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -29,9 +29,9 @@ function isThisMonth(d: string): boolean {
 export default function ParentDashboard() {
   const { user } = useAuth();
   const childrenQuery = useChildren();
-  const tasksQuery = useTasks();
+  const choresQuery = useChores();
   const children = childrenQuery.data ?? [];
-  const tasks = tasksQuery.data ?? [];
+  const items = choresQuery.data?.items ?? [];
   const [showAddChild, setShowAddChild] = useState(false);
 
   // One cached allowance query per child (same keys as useAllowance, so an
@@ -48,28 +48,27 @@ export default function ParentDashboard() {
     balances[c.id] = allowanceResults[i]?.data ?? null;
   });
 
-  const pending = childrenQuery.isPending || tasksQuery.isPending;
-  const isError = childrenQuery.isError || tasksQuery.isError;
-  const retry = () => { childrenQuery.refetch(); tasksQuery.refetch(); };
+  const pending = childrenQuery.isPending || choresQuery.isPending;
+  const isError = childrenQuery.isError || choresQuery.isError;
+  const retry = () => { childrenQuery.refetch(); choresQuery.refetch(); };
   if (pending || isError) {
     return <QueryBoundary isPending={pending} isError={isError} onRetry={retry}>{null}</QueryBoundary>;
   }
 
-  // A per-unit definition stays PENDING in the pool forever; it is not an
-  // awaiting-completion chore, so list it separately rather than as outstanding.
-  const isPerUnitDef = (t: TaskView) => !!t.isPerUnit && t.isUpForGrabs && !t.assignedToId;
-  const pendingApprovals = tasks.filter(t => t.status === 'COMPLETED');
-  const perUnitChores = tasks.filter(isPerUnitDef);
-  const outstanding = tasks.filter(t => (t.status === 'PENDING' || t.status === 'REJECTED') && !isPerUnitDef(t));
+  // A per-unit pool entry is always open for logging; it is never itself
+  // awaiting completion, so list it separately rather than as outstanding.
+  const pendingApprovals = items.filter(i => i.status === 'COMPLETED');
+  const perUnitChores = items.filter(i => i.kind === 'PER_UNIT' && !i.completionId);
+  const outstanding = items.filter(i => i.status === 'PENDING' && !(i.kind === 'PER_UNIT' && !i.completionId));
 
-  // Stats — sum of this-month EARNED transactions, and approved chores.
+  // Stats — sum of this-month EARNED transactions, and approved completions.
   let totalPaid = 0;
   for (const a of Object.values(balances)) {
     for (const tx of a?.transactions || []) {
       if (tx.type === 'EARNED' && tx.amount > 0 && isThisMonth(tx.createdAt)) totalPaid += tx.amount;
     }
   }
-  const choresApproved = tasks.filter(t => t.status === 'APPROVED').length;
+  const choresApproved = items.filter(i => i.status === 'APPROVED').length;
 
   return (
     <>
@@ -135,8 +134,8 @@ export default function ParentDashboard() {
           <section>
             <h2 className="text-[15px] font-bold text-ink-900 mb-2.5">Needs Approval</h2>
             <div className="space-y-2.5">
-              {pendingApprovals.map(task => (
-                <TaskCard key={task.id} task={task} role="PARENT" />
+              {pendingApprovals.map(item => (
+                <ChoreCard key={item.id} item={item} role="PARENT" />
               ))}
             </div>
           </section>
@@ -147,8 +146,8 @@ export default function ParentDashboard() {
           <section>
             <h2 className="text-[15px] font-bold text-ink-900 mb-2.5">Pay-per-item Chores</h2>
             <div className="space-y-2.5">
-              {perUnitChores.map(task => (
-                <TaskCard key={task.id} task={task} role="PARENT" />
+              {perUnitChores.map(item => (
+                <ChoreCard key={item.id} item={item} role="PARENT" />
               ))}
             </div>
           </section>
@@ -172,8 +171,8 @@ export default function ParentDashboard() {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {outstanding.map(task => (
-                <TaskCard key={task.id} task={task} role="PARENT" />
+              {outstanding.map(item => (
+                <ChoreCard key={item.id} item={item} role="PARENT" />
               ))}
             </div>
           )}

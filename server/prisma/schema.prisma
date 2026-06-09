@@ -34,14 +34,15 @@ model User {
   children          User[]    @relation("Family")
   createdAt         DateTime  @default(now())
 
-  assignedTasks  Task[]          @relation("AssignedTo")
-  createdTasks   Task[]          @relation("CreatedBy")
-  transactions   Transaction[]
-  trustedDevices TrustedDevice[] @relation("HouseholdDevices")
-  rememberedOn   TrustedDevice[] @relation("RememberedChildren")
-  savingsGoals   SavingsGoal[]   @relation("ChildGoals")
-  createdGoals   SavingsGoal[]   @relation("CreatedGoals")
-  pushTokens     PushToken[]
+  assignedChores  Chore[]           @relation("AssignedChores")
+  householdChores Chore[]           @relation("HouseholdChores")
+  completions     ChoreCompletion[] @relation("ChildCompletions")
+  transactions    Transaction[]
+  trustedDevices  TrustedDevice[]   @relation("HouseholdDevices")
+  rememberedOn    TrustedDevice[]   @relation("RememberedChildren")
+  savingsGoals    SavingsGoal[]     @relation("ChildGoals")
+  createdGoals    SavingsGoal[]     @relation("CreatedGoals")
+  pushTokens      PushToken[]
 
   @@index([parentId])
 }
@@ -63,71 +64,89 @@ model TrustedDevice {
   @@index([parentId])
 }
 
-// status: "PENDING" | "COMPLETED" | "APPROVED" | "REJECTED"
-// recurrence: "DAILY" | "WEEKLY" | "MONTHLY"
-// weeklyDays: comma-separated day numbers 0-6 (0=Sun..6=Sat) for WEEKLY tasks; null/empty = every 7 days
-// isUpForGrabs + assignedToId encode three states (the flag stays true even after a claim):
-//   normal task   -> isUpForGrabs=false, assignedToId set
-//   open pool      -> isUpForGrabs=true,  assignedToId=null (visible to the whole household)
-//   grabbed/locked -> isUpForGrabs=true,  assignedToId set  (behaves like a normal task)
-// An open chore's household is derived from createdById (always the parent).
-// isPerUnit chores are paid by the item and split across the household. They use
-// two row kinds linked by templateId (dollarAmount stays null on both):
-//   definition  -> isPerUnit=true, isUpForGrabs=true, assignedToId=null, status=PENDING,
-//                  unitReward set, quantity=null. Stays open in the pool forever; any
-//                  child logs against it. Never completed or credited itself.
-//   completion  -> isPerUnit=true, assignedToId=<kid>, quantity=N, unitReward inherited,
-//                  status=COMPLETED->APPROVED. One per logged count; credits unitReward*quantity.
-model Task {
-  id           String   @id @default(cuid())
-  title        String
-  description  String?
-  dollarAmount Int? // integer cents (e.g. 250 = $2.50)
-  status       String   @default("PENDING")
-  isUpForGrabs Boolean  @default(false)
+// A chore DEFINITION — what a parent creates and edits. Carries no lifecycle
+// status; work lives in ChoreCompletion rows, and future occurrences of a
+// recurring chore are projected at read time from this definition (never
+// materialized ahead of a user action — see src/lib/projection.ts).
+//
+// kind: "ASSIGNED" (one child) | "OPEN" (household pool, claimed per occurrence)
+//       | "PER_UNIT" (household pool, logged per item, never recurring)
+// recurrence: null (one-off) | "DAILY" | "WEEKLY" | "MONTHLY"
+// weeklyDays: comma-separated day numbers 0-6 (0=Sun..6=Sat) for WEEKLY; null/empty = every 7 days
+// startDay: household-local calendar day "YYYY-MM-DD" — a one-off's due day
+//   (optional) or a recurring chore's schedule anchor (always set, snapped to the
+//   first scheduled occurrence).
+// missedPolicy ("CURRENT_ONLY" | "BACKFILL_14D"): how missed occurrences of a
+//   recurring ASSIGNED chore surface — only the earliest unresolved one, or every
+//   unresolved scheduled day in the last 14 days. Ignored for OPEN/PER_UNIT.
+// rewardCents: flat reward (ASSIGNED/OPEN); unitRewardCents: per-item (PER_UNIT).
+// archivedAt: archived chores stop projecting and accepting work; history kept.
+model Chore {
+  id              String    @id @default(cuid())
+  householdId     String // the parent who owns this chore (and the household scope)
+  household       User      @relation("HouseholdChores", fields: [householdId], references: [id])
+  kind            String
+  title           String
+  description     String?
+  rewardCents     Int?
+  unitRewardCents Int?
+  assigneeId      String?
+  assignee        User?     @relation("AssignedChores", fields: [assigneeId], references: [id])
+  recurrence      String?
+  weeklyDays      String?
+  startDay        String?
+  missedPolicy    String    @default("CURRENT_ONLY")
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
 
-  isPerUnit  Boolean @default(false)
-  unitReward Int? // per-item reward in integer cents (per-unit definition + inherited by completions)
-  quantity   Int? // units logged on a per-unit completion instance; null on the definition
+  completions ChoreCompletion[]
 
-  assignedToId String?
-  assignedTo   User?  @relation("AssignedTo", fields: [assignedToId], references: [id])
-  createdById  String
-  createdBy    User   @relation("CreatedBy", fields: [createdById], references: [id])
+  @@index([householdId])
+  @@index([assigneeId])
+}
 
-  dueDate     DateTime?
-  completedAt DateTime?
-  approvedAt  DateTime?
+// A child's work record on a chore. Always belongs to a child.
+// status: "PENDING" (claimed/sent back, not yet done) | "COMPLETED" (awaiting
+//   review) | "APPROVED" (credited). Rejection flips back to PENDING, except
+//   per-unit logs which are deleted (the child just re-logs).
+// occurrenceKey: the household-local day "YYYY-MM-DD" this row resolves, or
+//   "once" for a one-off. The (choreId, occurrenceKey) unique constraint IS the
+//   claim/complete race guard — exactly one row can win an occurrence. Per-unit
+//   logs use null (SQLite unique indexes treat NULLs as distinct), so logs are
+//   unlimited and never conflict.
+// rewardCents: snapshot at creation (PER_UNIT: unit reward × quantity, recomputed
+//   if the parent adjusts the count at approval). Approval pays this snapshot, so
+//   editing the chore definition never changes in-flight or approved work.
+model ChoreCompletion {
+  id            String    @id @default(cuid())
+  choreId       String
+  chore         Chore     @relation(fields: [choreId], references: [id])
+  childId       String
+  child         User      @relation("ChildCompletions", fields: [childId], references: [id])
+  occurrenceKey String?
+  status        String    @default("PENDING")
+  quantity      Int?
+  rewardCents   Int?
+  completedAt   DateTime?
+  approvedAt    DateTime?
+  createdAt     DateTime  @default(now())
 
-  isRecurring Boolean @default(false)
-  recurrence  String?
-  weeklyDays  String?
-  // catchUp: when true on a child-assigned recurring task, missed occurrences are
-  // backfilled as independent PENDING instances on read (see routes/tasks.ts).
-  // Meaningful only for recurring, assigned, non-up-for-grabs tasks; false otherwise.
-  catchUp     Boolean @default(false)
-  templateId  String?
-  template    Task?   @relation("Instances", fields: [templateId], references: [id])
-  instances   Task[]  @relation("Instances")
-
-  createdAt   DateTime     @default(now())
   transaction Transaction?
 
-  @@index([assignedToId])
-  @@index([createdById])
-  @@index([dueDate])
-  @@index([templateId])
+  @@unique([choreId, occurrenceKey])
+  @@index([childId])
+  @@index([choreId])
 }
 
 // type: "EARNED" | "ADJUSTMENT" | "REDEEMED"
 // REDEEMED: a negative entry from cashing in a savings goal (linked via goalId).
 model Transaction {
-  id        String       @id @default(cuid())
-  userId    String
-  user      User         @relation(fields: [userId], references: [id])
-  taskId    String?      @unique
-  task      Task?        @relation(fields: [taskId], references: [id])
-  goalId    String?      @unique
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id])
+  completionId String?          @unique
+  completion   ChoreCompletion? @relation(fields: [completionId], references: [id])
+  goalId       String?          @unique
   goal      SavingsGoal? @relation(fields: [goalId], references: [id])
   amount    Int // integer cents; negative for deductions
   type      String

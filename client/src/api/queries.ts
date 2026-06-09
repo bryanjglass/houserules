@@ -3,7 +3,8 @@ import api from './client';
 import { keys } from './keys';
 import type {
   Child,
-  TaskView,
+  ChoreView,
+  ChoresResponse,
   Allowance,
   GoalView,
   CalendarEvent,
@@ -19,17 +20,17 @@ export const useChildren = () =>
     queryFn: () => api.get('/users/children').then((r) => r.data as Child[]),
   });
 
-export const useTasks = () =>
+export const useChores = () =>
   useQuery({
-    queryKey: keys.tasks,
-    queryFn: () => api.get('/tasks').then((r) => r.data as TaskView[]),
+    queryKey: keys.chores,
+    queryFn: () => api.get('/chores').then((r) => r.data as ChoresResponse),
   });
 
-export const useTask = (id?: string) =>
+export const useChore = (id?: string) =>
   useQuery({
     enabled: !!id,
-    queryKey: keys.task(id ?? ''),
-    queryFn: () => api.get(`/tasks/${id}`).then((r) => r.data as TaskView),
+    queryKey: keys.chore(id ?? ''),
+    queryFn: () => api.get(`/chores/${id}`).then((r) => r.data as ChoreView),
   });
 
 export const useAllowance = (childId?: string) =>
@@ -47,12 +48,12 @@ export const useGoal = (childId?: string) =>
       api.get(`/goals/${childId}`).then((r) => (r.data.goal ?? null) as GoalView | null),
   });
 
-export const useCalendar = (startISO: string, endISO: string) =>
+export const useCalendar = (startDay: string, endDay: string) =>
   useQuery({
-    queryKey: keys.calendar(startISO, endISO),
+    queryKey: keys.calendar(startDay, endDay),
     queryFn: () =>
       api
-        .get('/tasks/calendar', { params: { start: startISO, end: endISO } })
+        .get('/chores/calendar', { params: { start: startDay, end: endDay } })
         .then((r) => r.data as CalendarEvent[]),
   });
 

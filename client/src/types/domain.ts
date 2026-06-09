@@ -6,9 +6,19 @@
 
 export type Role = 'PARENT' | 'CHILD';
 
-export type TaskStatus = 'PENDING' | 'COMPLETED' | 'APPROVED' | 'REJECTED';
+// What a chore definition is: assigned to one child, open to the household pool
+// (claimed per occurrence), or per-unit (logged per item, never recurring).
+export type ChoreKind = 'ASSIGNED' | 'OPEN' | 'PER_UNIT';
+
+// Lifecycle of a ChoreCompletion (a child's work record). Rejection returns a
+// completion to PENDING (per-unit logs are deleted instead).
+export type CompletionStatus = 'PENDING' | 'COMPLETED' | 'APPROVED';
 
 export type Recurrence = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+
+// How missed occurrences of a recurring ASSIGNED chore surface at read time:
+// only the earliest unresolved one, or every unresolved day in the last 14 days.
+export type MissedPolicy = 'CURRENT_ONLY' | 'BACKFILL_14D';
 
 export type TransactionType = 'EARNED' | 'ADJUSTMENT' | 'REDEEMED';
 

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useChildren, useTasks, useAllowance, useGoal } from '../../api/queries';
+import { useChildren, useChores, useAllowance, useGoal } from '../../api/queries';
 import { useAdjustAllowance, useCreateGoal, useUpdateGoal, useDeleteGoal, useDecideCashIn } from '../../api/mutations';
-import TaskCard from '../../components/TaskCard';
+import ChoreCard from '../../components/ChoreCard';
 import BalanceDisplay from '../../components/BalanceDisplay';
 import SavingsGoalCard from '../../components/SavingsGoalCard';
 import Loading from '../../components/Loading';
@@ -11,17 +11,17 @@ import { Avatar } from '../../components/Brand';
 import { ChevronLeftIcon, PlusIcon } from '../../components/Icons';
 import { formatCents, dollarsToCents } from '../../lib/money';
 
-const STATUS_ORDER: Record<string, number> = { COMPLETED: 0, PENDING: 1, REJECTED: 2, APPROVED: 3 };
+const STATUS_ORDER: Record<string, number> = { COMPLETED: 0, PENDING: 1, APPROVED: 2 };
 
 export default function ChildDetail() {
   const { childId } = useParams();
   const childrenQuery = useChildren();
-  const tasksQuery = useTasks();
+  const choresQuery = useChores();
   const allowanceQuery = useAllowance(childId);
   const goalQuery = useGoal(childId);
 
   const child = childrenQuery.data?.find(c => c.id === childId) ?? null;
-  const tasks = (tasksQuery.data ?? []).filter(t => t.assignedToId === childId);
+  const items = (choresQuery.data?.items ?? []).filter(i => i.childId === childId);
   const allowance = allowanceQuery.data ?? null;
   const goal = goalQuery.data ?? null;
 
@@ -105,8 +105,8 @@ export default function ChildDetail() {
 
   if (childrenQuery.isPending || !child) return <Loading />;
 
-  const filteredTasks = tasks
-    .filter(t => filter === 'active' ? t.status !== 'APPROVED' : t.status === 'APPROVED')
+  const filteredItems = items
+    .filter(i => filter === 'active' ? i.status !== 'APPROVED' : i.status === 'APPROVED')
     .sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
 
   return (
@@ -226,19 +226,19 @@ export default function ChildDetail() {
         </div>
 
         <div className="flex justify-end">
-          <Link to={`/tasks/new?childId=${childId}`} className="btn-primary !px-4 !py-2 !text-[13px] !rounded-xl">
+          <Link to={`/chores/new?childId=${childId}`} className="btn-primary !px-4 !py-2 !text-[13px] !rounded-xl">
             <PlusIcon size={16} /> New Task
           </Link>
         </div>
 
-        {filteredTasks.length === 0 ? (
+        {filteredItems.length === 0 ? (
           <div className="card border-dashed p-8 text-center text-ink-400">
             <p>{filter === 'active' ? 'No active tasks.' : 'No completed tasks yet.'}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredTasks.map(task => (
-              <TaskCard key={task.id} task={task} role="PARENT" />
+            {filteredItems.map(item => (
+              <ChoreCard key={item.id} item={item} role="PARENT" />
             ))}
           </div>
         )}
@@ -251,7 +251,7 @@ export default function ChildDetail() {
                 <div key={tx.id} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="text-sm font-bold text-ink-900">
-                      {tx.task?.title
+                      {tx.choreTitle
                         || (tx.goal?.title ? `Cashed in: ${tx.goal.title}` : null)
                         || tx.note
                         || (tx.type === 'ADJUSTMENT' ? 'Manual adjustment' : 'Earned')}

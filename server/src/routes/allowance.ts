@@ -25,15 +25,24 @@ router.get('/:childId', async (req, res) => {
     if (!child || child.parentId !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   }
 
-  const transactions = await prisma.transaction.findMany({
+  const rows = await prisma.transaction.findMany({
     where: { userId: childId },
-    include: { task: { select: { title: true } }, goal: { select: { title: true } } },
+    include: {
+      completion: { select: { chore: { select: { title: true } } } },
+      goal: { select: { title: true } },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
   // Amounts are signed integer cents (EARNED is positive, ADJUSTMENT may be
   // negative), so the balance is simply their sum.
-  const balance = transactions.reduce((sum, t) => sum + t.amount, 0);
+  const balance = rows.reduce((sum, t) => sum + t.amount, 0);
+
+  // Flatten the chore title for the client's transaction history.
+  const transactions = rows.map(({ completion, ...t }) => ({
+    ...t,
+    choreTitle: completion?.chore.title ?? null,
+  }));
 
   res.json({ balance, transactions });
 });

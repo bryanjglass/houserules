@@ -1,16 +1,8 @@
-// Pure recurrence-scheduling helpers, dependency-free (only timezone day math).
-// Kept out of routes/tasks.ts so they can be unit-tested without loading Express
-// or Prisma. The DB-touching generators (backfill/live-tip/projection) stay in
-// the route module and call into these.
-import {
-  familyToday,
-  dueDay,
-  addDays,
-  addMonths,
-  dayOfWeek,
-  stampLocalNoon,
-  type CalDay,
-} from './tz.js';
+// Pure recurrence-scheduling helpers, dependency-free (only day-key math).
+// Kept out of routes/chores.ts so they can be unit-tested without loading
+// Express or Prisma. Occurrence projection (which keys are visible/actionable)
+// builds on these in lib/projection.ts.
+import { addDaysToKey, addMonthsToKey, dayOfWeekOf, type DayKey } from './tz.js';
 
 // Parse a stored comma-separated weekly-days string into a deduped, sorted list
 // of valid day numbers (0=Sun..6=Sat). Junk and out-of-range entries are dropped.
@@ -24,67 +16,53 @@ export function parseWeeklyDays(weeklyDays: string | null | undefined): number[]
   )].sort((a, b) => a - b);
 }
 
-// The next scheduled occurrence after `currentDue`, computed in CALENDAR DAYS in
-// the household timezone and stamped at local noon so it can't slip across a day
-// boundary under DST/offset. Reuses the same weekly/selected-day + monthly rules.
-export function nextDueDate(
-  currentDue: Date | string | null,
+// The scheduled occurrence strictly after `currentKey`. Weekly with selected
+// days advances to the soonest selected weekday; weekly without days advances
+// seven days; monthly advances one month (JS end-of-month overflow applies).
+export function nextOccurrenceKey(
+  currentKey: DayKey,
   recurrence: string | null,
-  weeklyDays: string | null | undefined,
-  tz: string
-): Date {
-  const baseDay = currentDue ? dueDay(currentDue, tz) : familyToday(tz);
-  let next: CalDay;
+  weeklyDays: string | null | undefined
+): DayKey {
   switch (recurrence) {
     case 'DAILY':
-      next = addDays(baseDay, 1);
-      break;
+      return addDaysToKey(currentKey, 1);
     case 'WEEKLY': {
       const days = parseWeeklyDays(weeklyDays);
-      if (days.length === 0) {
-        next = addDays(baseDay, 7);
-        break;
-      }
+      if (days.length === 0) return addDaysToKey(currentKey, 7);
       const daySet = new Set(days);
-      let cur = baseDay;
+      let cur = currentKey;
       for (let i = 1; i <= 7; i++) {
-        cur = addDays(cur, 1);
-        if (daySet.has(dayOfWeek(cur))) break;
+        cur = addDaysToKey(cur, 1);
+        if (daySet.has(dayOfWeekOf(cur))) break;
       }
-      next = cur;
-      break;
+      return cur;
     }
     case 'MONTHLY':
-      next = addMonths(baseDay, 1);
-      break;
+      return addMonthsToKey(currentKey, 1);
     default:
-      next = baseDay;
+      return currentKey;
   }
-  return stampLocalNoon(next, tz);
 }
 
-// The first scheduled occurrence ON OR AFTER `start` (a calendar day), stamped at
-// household-local noon. DAILY / MONTHLY / WEEKLY-with-no-selected-days start on
-// `start` itself; WEEKLY-with-days snaps forward to the first selected weekday on
-// or after `start`. Complements nextDueDate, which finds the day strictly after a
-// current one. Used to anchor a recurring task to a concrete first instance.
-export function firstOccurrence(
-  start: CalDay,
+// The first scheduled occurrence ON OR AFTER `startKey`. DAILY / MONTHLY /
+// WEEKLY-with-no-selected-days start on `startKey` itself; WEEKLY-with-days
+// snaps forward to the first selected weekday on or after it. Used to anchor a
+// recurring chore's startDay to a concrete first occurrence.
+export function firstOccurrenceKey(
+  startKey: DayKey,
   recurrence: string | null,
-  weeklyDays: string | null | undefined,
-  tz: string
-): Date {
-  let day = start;
-  if (recurrence === 'WEEKLY') {
-    const days = parseWeeklyDays(weeklyDays);
-    if (days.length > 0) {
-      const daySet = new Set(days);
-      // `start` is included; walk forward at most 6 days to the next selected one.
-      for (let i = 0; i < 7; i++) {
-        if (daySet.has(dayOfWeek(day))) break;
-        day = addDays(day, 1);
-      }
-    }
+  weeklyDays: string | null | undefined
+): DayKey {
+  if (recurrence !== 'WEEKLY') return startKey;
+  const days = parseWeeklyDays(weeklyDays);
+  if (days.length === 0) return startKey;
+  const daySet = new Set(days);
+  let day = startKey;
+  // `startKey` is included; walk forward at most 6 days to the next selected one.
+  for (let i = 0; i < 7; i++) {
+    if (daySet.has(dayOfWeekOf(day))) break;
+    day = addDaysToKey(day, 1);
   }
-  return stampLocalNoon(day, tz);
+  return day;
 }

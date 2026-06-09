@@ -3,8 +3,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import ParentDashboard from './pages/parent/Dashboard';
 import ChildDetail from './pages/parent/ChildDetail';
-import TaskManager from './pages/parent/TaskManager';
-import EditTask from './pages/parent/EditTask';
+import NewChore from './pages/parent/NewChore';
+import EditChore from './pages/parent/EditChore';
 import Settings from './pages/parent/Settings';
 import ChildDashboard from './pages/child/Dashboard';
 import ChildAllowance from './pages/child/Allowance';
@@ -38,8 +38,8 @@ function AppRoutes() {
         <Routes>
           <Route path="/" element={<ParentDashboard />} />
           <Route path="/children/:childId" element={<ChildDetail />} />
-          <Route path="/tasks/new" element={<TaskManager />} />
-          <Route path="/tasks/:id/edit" element={<EditTask />} />
+          <Route path="/chores/new" element={<NewChore />} />
+          <Route path="/chores/:id/edit" element={<EditChore />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,30 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
   isValidTimeZone,
-  calDayInTz,
-  dueDay,
-  compareDays,
-  isFutureDay,
-  dayOfWeek,
-  addDays,
-  addMonths,
-  stampLocalNoon,
-  parseDateInput,
+  dayKeyOf,
+  todayKey,
+  parseDayKeyInput,
+  compareDayKeys,
+  dayOfWeekOf,
+  addDaysToKey,
+  addMonthsToKey,
+  DAY_KEY_RE,
 } from './tz.js';
 
 const CHICAGO = 'America/Chicago';
 const TOKYO = 'Asia/Tokyo';
-
-// The wall-clock hour an instant renders to in a given zone (robust DST check).
-function localHour(date: Date, tz: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    hour: '2-digit',
-    hour12: false,
-  }).formatToParts(date);
-  const h = Number(parts.find((p) => p.type === 'hour')!.value);
-  return h === 24 ? 0 : h;
-}
 
 describe('isValidTimeZone', () => {
   it('accepts real IANA zones and rejects junk', () => {
@@ -35,104 +23,72 @@ describe('isValidTimeZone', () => {
   });
 });
 
-describe('calDayInTz / dueDay', () => {
+describe('dayKeyOf', () => {
   it('resolves the local calendar day, not the UTC day (west of UTC)', () => {
     // 02:00 UTC on Jun 15 is still Jun 14, 21:00 in Chicago (CDT, UTC-5).
     const d = new Date('2026-06-15T02:00:00Z');
-    expect(calDayInTz(d, CHICAGO)).toEqual({ y: 2026, m: 6, d: 14 });
-    expect(calDayInTz(d, 'UTC')).toEqual({ y: 2026, m: 6, d: 15 });
+    expect(dayKeyOf(d, CHICAGO)).toBe('2026-06-14');
+    expect(dayKeyOf(d, 'UTC')).toBe('2026-06-15');
   });
 
   it('resolves the local calendar day east of UTC', () => {
     // 23:00 UTC on Jun 14 is already Jun 15, 08:00 in Tokyo (UTC+9).
-    const d = new Date('2026-06-14T23:00:00Z');
-    expect(dueDay(d, TOKYO)).toEqual({ y: 2026, m: 6, d: 15 });
+    expect(dayKeyOf(new Date('2026-06-14T23:00:00Z'), TOKYO)).toBe('2026-06-15');
+  });
+
+  it('always emits the zero-padded canonical form', () => {
+    expect(dayKeyOf(new Date('2026-01-05T12:00:00Z'), 'UTC')).toBe('2026-01-05');
+    expect(DAY_KEY_RE.test(todayKey(CHICAGO))).toBe(true);
   });
 });
 
-describe('compareDays', () => {
+describe('parseDayKeyInput', () => {
+  it('accepts a literal day key', () => {
+    expect(parseDayKeyInput('2026-06-06')).toBe('2026-06-06');
+    expect(parseDayKeyInput('  2026-06-06 ')).toBe('2026-06-06');
+  });
+
+  it('rejects empty, junk, timestamps, and out-of-range components', () => {
+    expect(parseDayKeyInput('')).toBeNull();
+    expect(parseDayKeyInput(null)).toBeNull();
+    expect(parseDayKeyInput(undefined)).toBeNull();
+    expect(parseDayKeyInput('not-a-date')).toBeNull();
+    expect(parseDayKeyInput('2026-06-15T02:00:00Z')).toBeNull();
+    expect(parseDayKeyInput('2026-13-01')).toBeNull();
+    expect(parseDayKeyInput('2026-00-10')).toBeNull();
+    expect(parseDayKeyInput('2026-06-32')).toBeNull();
+  });
+});
+
+describe('compareDayKeys', () => {
   it('orders by year, then month, then day', () => {
-    expect(compareDays({ y: 2026, m: 6, d: 10 }, { y: 2026, m: 6, d: 10 })).toBe(0);
-    expect(compareDays({ y: 2026, m: 6, d: 9 }, { y: 2026, m: 6, d: 10 })).toBeLessThan(0);
-    expect(compareDays({ y: 2026, m: 7, d: 1 }, { y: 2026, m: 6, d: 30 })).toBeGreaterThan(0);
-    expect(compareDays({ y: 2027, m: 1, d: 1 }, { y: 2026, m: 12, d: 31 })).toBeGreaterThan(0);
+    expect(compareDayKeys('2026-06-10', '2026-06-10')).toBe(0);
+    expect(compareDayKeys('2026-06-09', '2026-06-10')).toBeLessThan(0);
+    expect(compareDayKeys('2026-07-01', '2026-06-30')).toBeGreaterThan(0);
+    expect(compareDayKeys('2027-01-01', '2026-12-31')).toBeGreaterThan(0);
   });
 });
 
-describe('isFutureDay', () => {
-  it('is true for a far-future date and false for a far-past date', () => {
-    expect(isFutureDay('2999-01-01T12:00:00Z', 'UTC')).toBe(true);
-    expect(isFutureDay('2000-01-01T12:00:00Z', 'UTC')).toBe(false);
-  });
-});
-
-describe('dayOfWeek', () => {
+describe('dayOfWeekOf', () => {
   it('returns 0=Sunday .. 6=Saturday for known dates', () => {
-    // 2026-03-08 is a Sunday (US spring-forward day); 2026-06-10 is a Wednesday.
-    expect(dayOfWeek({ y: 2026, m: 3, d: 8 })).toBe(0);
-    expect(dayOfWeek({ y: 2026, m: 6, d: 10 })).toBe(3);
+    // 2026-03-08 is a Sunday; 2026-06-10 is a Wednesday.
+    expect(dayOfWeekOf('2026-03-08')).toBe(0);
+    expect(dayOfWeekOf('2026-06-10')).toBe(3);
   });
 });
 
-describe('addDays / addMonths', () => {
+describe('addDaysToKey / addMonthsToKey', () => {
   it('adds days across a month boundary', () => {
-    expect(addDays({ y: 2026, m: 6, d: 28 }, 5)).toEqual({ y: 2026, m: 7, d: 3 });
-    expect(addDays({ y: 2026, m: 1, d: 1 }, -1)).toEqual({ y: 2025, m: 12, d: 31 });
+    expect(addDaysToKey('2026-06-28', 5)).toBe('2026-07-03');
+    expect(addDaysToKey('2026-01-01', -1)).toBe('2025-12-31');
   });
 
   it('adds a clean month', () => {
-    expect(addMonths({ y: 2026, m: 6, d: 15 }, 1)).toEqual({ y: 2026, m: 7, d: 15 });
+    expect(addMonthsToKey('2026-06-15', 1)).toBe('2026-07-15');
   });
 
   it('overflows day-31 monthly into the following month (documented JS quirk)', () => {
     // Feb has 28 days in 2026, so Jan 31 + 1 month overflows to Mar 3.
-    expect(addMonths({ y: 2026, m: 1, d: 31 }, 1)).toEqual({ y: 2026, m: 3, d: 3 });
-  });
-});
-
-describe('parseDateInput', () => {
-  it('reads a date-only string as the literal household day (no UTC slip)', () => {
-    // The bug: new Date("2026-06-06") is UTC midnight -> 6/5 in EDT. parseDateInput
-    // must keep it 6/6, and stamping it must round-trip to 6/6.
-    const day = parseDateInput('2026-06-06', CHICAGO);
-    expect(day).toEqual({ y: 2026, m: 6, d: 6 });
-    expect(calDayInTz(stampLocalNoon(day!, 'America/New_York'), 'America/New_York'))
-      .toEqual({ y: 2026, m: 6, d: 6 });
-  });
-
-  it('resolves a Date input via the household timezone', () => {
-    // 02:00Z on 6/15 is still 6/14 in Chicago.
-    expect(parseDateInput(new Date('2026-06-15T02:00:00Z'), CHICAGO))
-      .toEqual({ y: 2026, m: 6, d: 14 });
-  });
-
-  it('returns null for empty/invalid input', () => {
-    expect(parseDateInput('', CHICAGO)).toBeNull();
-    expect(parseDateInput(null, CHICAGO)).toBeNull();
-    expect(parseDateInput(undefined, CHICAGO)).toBeNull();
-    expect(parseDateInput('not-a-date', CHICAGO)).toBeNull();
-  });
-});
-
-describe('stampLocalNoon', () => {
-  it('round-trips to the same calendar day at local noon (standard time)', () => {
-    const day = { y: 2026, m: 1, d: 15 }; // Chicago in CST (UTC-6)
-    const stamped = stampLocalNoon(day, CHICAGO);
-    expect(calDayInTz(stamped, CHICAGO)).toEqual(day);
-    expect(localHour(stamped, CHICAGO)).toBe(12);
-  });
-
-  it('round-trips on the DST spring-forward day', () => {
-    const day = { y: 2026, m: 3, d: 8 }; // transition day; noon is already CDT
-    const stamped = stampLocalNoon(day, CHICAGO);
-    expect(calDayInTz(stamped, CHICAGO)).toEqual(day);
-    expect(localHour(stamped, CHICAGO)).toBe(12);
-  });
-
-  it('round-trips east of UTC', () => {
-    const day = { y: 2026, m: 6, d: 15 };
-    const stamped = stampLocalNoon(day, TOKYO);
-    expect(calDayInTz(stamped, TOKYO)).toEqual(day);
-    expect(localHour(stamped, TOKYO)).toBe(12);
+    expect(addMonthsToKey('2026-01-31', 1)).toBe('2026-03-03');
   });
 });

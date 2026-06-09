@@ -3,91 +3,86 @@ import type { QueryClient } from '@tanstack/react-query';
 import api from './client';
 import { keys } from './keys';
 
-// Any task write can affect the lists, a balance (approval credits), goal
+// Any chore write can affect the lists, a balance (approval credits), goal
 // progress (derived from balance), and the calendar. Invalidating this set is
 // broad but correct and deduped — precise cache surgery can come later.
-function invalidateTaskWorld(qc: QueryClient) {
-  qc.invalidateQueries({ queryKey: keys.tasks });
-  qc.invalidateQueries({ queryKey: ['task'] });
+function invalidateChoreWorld(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: keys.chores });
+  qc.invalidateQueries({ queryKey: ['chore'] });
   qc.invalidateQueries({ queryKey: keys.allowanceAll });
   qc.invalidateQueries({ queryKey: keys.goalAll });
   qc.invalidateQueries({ queryKey: ['calendar'] });
 }
 
-// ---- Task mutations -------------------------------------------------------
+// ---- Chore mutations ------------------------------------------------------
 
-export const useCreateTask = () => {
+export const useCreateChore = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.post('/tasks', body).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
+    mutationFn: (body: Record<string, unknown>) => api.post('/chores', body).then((r) => r.data),
+    onSuccess: () => invalidateChoreWorld(qc),
   });
 };
 
-export const useUpdateTask = () => {
+export const useUpdateChore = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
-      api.put(`/tasks/${id}`, body).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
+      api.put(`/chores/${id}`, body).then((r) => r.data),
+    onSuccess: () => invalidateChoreWorld(qc),
   });
 };
 
-export const useMarkTaskDone = () => {
+// Resolve an occurrence as done — child completing their own work, or a parent
+// marking it done on the child's behalf (same endpoint either way).
+export const useCompleteChore = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.put(`/tasks/${id}`, {}).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
+    mutationFn: ({ choreId, occurrenceKey }: { choreId: string; occurrenceKey: string | null }) =>
+      api.post(`/chores/${choreId}/complete`, occurrenceKey ? { occurrenceKey } : {}).then((r) => r.data),
+    onSuccess: () => invalidateChoreWorld(qc),
   });
 };
 
-export const useParentCompleteTask = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.post(`/tasks/${id}/complete`).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
-  });
-};
-
-export const useApproveTask = () => {
+export const useApproveCompletion = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, quantity }: { id: string; quantity?: number }) =>
-      api.post(`/tasks/${id}/approve`, quantity !== undefined ? { quantity } : {}).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
+      api.post(`/completions/${id}/approve`, quantity !== undefined ? { quantity } : {}).then((r) => r.data),
+    onSuccess: () => invalidateChoreWorld(qc),
   });
 };
 
-export const useRejectTask = () => {
+export const useRejectCompletion = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.post(`/tasks/${id}/reject`).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
+    mutationFn: (id: string) => api.post(`/completions/${id}/reject`).then((r) => r.data),
+    onSuccess: () => invalidateChoreWorld(qc),
   });
 };
 
-export const useClaimTask = () => {
+export const useClaimChore = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.post(`/tasks/${id}/claim`).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
+    mutationFn: (choreId: string) => api.post(`/chores/${choreId}/claim`).then((r) => r.data),
+    onSuccess: () => invalidateChoreWorld(qc),
   });
 };
 
 export const useLogUnits = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, quantity }: { id: string; quantity: number }) =>
-      api.post(`/tasks/${id}/log-units`, { quantity }).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
+    mutationFn: ({ choreId, quantity }: { choreId: string; quantity: number }) =>
+      api.post(`/chores/${choreId}/log-units`, { quantity }).then((r) => r.data),
+    onSuccess: () => invalidateChoreWorld(qc),
   });
 };
 
-export const useDeleteTask = () => {
+export const useArchiveChore = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/tasks/${id}`).then((r) => r.data),
-    onSuccess: () => invalidateTaskWorld(qc),
+    mutationFn: (choreId: string) => api.delete(`/chores/${choreId}`).then((r) => r.data),
+    onSuccess: () => invalidateChoreWorld(qc),
   });
 };
 
@@ -174,7 +169,7 @@ export const useSaveTimezone = () => {
       api.put('/users/timezone', { timezone }).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.timezone });
-      qc.invalidateQueries({ queryKey: keys.tasks });
+      qc.invalidateQueries({ queryKey: keys.chores });
       qc.invalidateQueries({ queryKey: ['calendar'] });
     },
   });

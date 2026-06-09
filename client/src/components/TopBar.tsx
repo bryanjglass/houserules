@@ -23,7 +23,7 @@ export default function TopBar() {
         </Link>
         <div className="flex items-center gap-4">
           {user?.role === 'PARENT' && (
-            <Link to="/tasks/new" className="btn-primary !px-3.5 !py-2 !text-[13px] !rounded-xl">
+            <Link to="/chores/new" className="btn-primary !px-3.5 !py-2 !text-[13px] !rounded-xl">
               <PlusIcon size={16} /> New Task
             </Link>
           )}
