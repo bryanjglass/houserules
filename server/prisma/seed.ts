@@ -1,8 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { generateHouseholdCode } from '../src/lib/codes.js';
-import { familyToday } from '../src/lib/tz.js';
-import { firstOccurrence } from '../src/lib/recurrence.js';
+import { todayKey } from '../src/lib/tz.js';
+import { firstOccurrenceKey } from '../src/lib/recurrence.js';
 
 const prisma = new PrismaClient();
 
@@ -63,46 +63,64 @@ async function main() {
     },
   });
 
-  const existingTasks = await prisma.task.count();
-  if (existingTasks === 0) {
-    // Recurring tasks are anchored to a concrete first scheduled occurrence (in
-    // the household timezone) so they generate occurrences and show on the calendar.
+  const existingChores = await prisma.chore.count();
+  if (existingChores === 0) {
+    // Recurring chores are anchored to a concrete first scheduled occurrence (a
+    // household-local day key) so projection generates occurrences from day one.
     const tz = parent.timezone || 'UTC';
-    const today = familyToday(tz);
-    await prisma.task.createMany({
+    const today = todayKey(tz);
+    await prisma.chore.createMany({
       data: [
         {
+          householdId: parent.id,
+          kind: 'ASSIGNED',
           title: 'Take out the trash',
           description: 'Every Monday evening before 7pm',
-          dollarAmount: 200,
-          assignedToId: alex.id,
-          createdById: parent.id,
-          isRecurring: true,
+          rewardCents: 200,
+          assigneeId: alex.id,
           recurrence: 'WEEKLY',
-          dueDate: firstOccurrence(today, 'WEEKLY', null, tz),
+          startDay: firstOccurrenceKey(today, 'WEEKLY', null),
         },
         {
+          householdId: parent.id,
+          kind: 'ASSIGNED',
           title: 'Clean your room',
-          dollarAmount: 300,
-          assignedToId: alex.id,
-          createdById: parent.id,
+          rewardCents: 300,
+          assigneeId: alex.id,
         },
         {
+          householdId: parent.id,
+          kind: 'ASSIGNED',
           title: 'Wash the dishes',
-          dollarAmount: 150,
-          assignedToId: sam.id,
-          createdById: parent.id,
-          isRecurring: true,
+          rewardCents: 150,
+          assigneeId: sam.id,
           recurrence: 'DAILY',
-          dueDate: firstOccurrence(today, 'DAILY', null, tz),
+          startDay: firstOccurrenceKey(today, 'DAILY', null),
+          // Missed days pile up so Sam can catch up after a busy week.
+          missedPolicy: 'BACKFILL_14D',
         },
         {
+          householdId: parent.id,
+          kind: 'ASSIGNED',
           title: 'Feed the dog',
-          assignedToId: sam.id,
-          createdById: parent.id,
-          isRecurring: true,
+          assigneeId: sam.id,
           recurrence: 'DAILY',
-          dueDate: firstOccurrence(today, 'DAILY', null, tz),
+          startDay: firstOccurrenceKey(today, 'DAILY', null),
+        },
+        {
+          householdId: parent.id,
+          kind: 'OPEN',
+          title: 'Rake the leaves',
+          description: 'First to grab it wins!',
+          rewardCents: 500,
+          startDay: today,
+        },
+        {
+          householdId: parent.id,
+          kind: 'PER_UNIT',
+          title: 'Pull weeds',
+          description: 'Paid per weed pulled — log how many you did.',
+          unitRewardCents: 10,
         },
       ],
     });

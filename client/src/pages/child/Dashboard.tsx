@@ -1,41 +1,41 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useTasks, useAllowance, useGoal } from '../../api/queries';
-import TaskCard from '../../components/TaskCard';
+import { useChores, useAllowance, useGoal } from '../../api/queries';
+import ChoreCard from '../../components/ChoreCard';
 import SavingsGoalCard from '../../components/SavingsGoalCard';
 import Loading from '../../components/Loading';
 import { Avatar } from '../../components/Brand';
 import { StarIcon } from '../../components/Icons';
 import { formatCents } from '../../lib/money';
 
-const STATUS_ORDER: Record<string, number> = { REJECTED: 0, PENDING: 1, COMPLETED: 2, APPROVED: 3 };
+const STATUS_ORDER: Record<string, number> = { PENDING: 0, COMPLETED: 1, APPROVED: 2 };
 
 export default function ChildDashboard() {
   const { user } = useAuth();
-  const tasksQuery = useTasks();
+  const choresQuery = useChores();
   const allowanceQuery = useAllowance(user?.id);
   const goalQuery = useGoal(user?.id);
   const [tab, setTab] = useState<'todo' | 'done'>('todo');
 
-  // Tasks gate the screen; balance and goal are best-effort (null while loading
+  // Chores gate the screen; balance and goal are best-effort (null while loading
   // or on error), mirroring the prior resilient behavior.
-  const tasks = tasksQuery.data ?? [];
+  const items = choresQuery.data?.items ?? [];
   const balance = allowanceQuery.data?.balance ?? null;
   const goal = goalQuery.data ?? null;
 
-  if (tasksQuery.isPending) {
+  if (choresQuery.isPending) {
     return <Loading />;
   }
 
-  // Unclaimed household chores anyone can grab (server only returns the child's
-  // own household pool). Everything else is the child's own task.
-  const poolTasks = tasks.filter(t => t.isUpForGrabs && !t.assignedToId);
-  const ownTasks = tasks.filter(t => t.assignedToId === user?.id);
-  const activeTasks = ownTasks
-    .filter(t => t.status !== 'APPROVED')
+  // The household pool: open chores anyone can grab and per-unit chores anyone
+  // can log against. Everything with the child's id is their own work.
+  const poolItems = items.filter(i => !i.childId);
+  const ownItems = items.filter(i => i.childId === user?.id);
+  const activeItems = ownItems
+    .filter(i => i.status !== 'APPROVED')
     .sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9));
-  const doneTasks = ownTasks.filter(t => t.status === 'APPROVED');
-  const list = tab === 'todo' ? activeTasks : doneTasks;
+  const doneItems = ownItems.filter(i => i.status === 'APPROVED');
+  const list = tab === 'todo' ? activeItems : doneItems;
 
   return (
     <main className="max-w-lg mx-auto px-5 pt-4 pb-2">
@@ -87,15 +87,15 @@ export default function ChildDashboard() {
         </div>
 
         {/* Up for grabs — open household chores, shown only in the To Do tab */}
-        {tab === 'todo' && poolTasks.length > 0 && (
+        {tab === 'todo' && poolItems.length > 0 && (
           <div className="mt-[18px]">
             <h2 className="text-[14px] font-bold text-ink-900 flex items-center gap-2">
               Up for Grabs
               <span className="badge badge-grab">First come, first served</span>
             </h2>
             <div className="flex flex-col gap-2.5 mt-2.5">
-              {poolTasks.map(task => (
-                <TaskCard key={task.id} task={task} role="CHILD" />
+              {poolItems.map(item => (
+                <ChoreCard key={item.id} item={item} role="CHILD" />
               ))}
             </div>
           </div>
@@ -111,8 +111,8 @@ export default function ChildDashboard() {
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 mt-2.5">
-            {list.map(task => (
-              <TaskCard key={task.id} task={task} role="CHILD" />
+            {list.map(item => (
+              <ChoreCard key={item.id} item={item} role="CHILD" />
             ))}
           </div>
         )}

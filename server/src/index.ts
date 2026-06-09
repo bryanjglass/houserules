@@ -9,7 +9,8 @@ import { dirname, join } from 'path';
 
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
-import tasksRoutes from './routes/tasks.js';
+import choresRoutes from './routes/chores.js';
+import completionsRoutes from './routes/completions.js';
 import allowanceRoutes from './routes/allowance.js';
 import goalsRoutes from './routes/goals.js';
 import notificationsRoutes from './routes/notifications.js';
@@ -59,7 +60,8 @@ app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
-app.use('/api/tasks', tasksRoutes);
+app.use('/api/chores', choresRoutes);
+app.use('/api/completions', completionsRoutes);
 app.use('/api/allowance', allowanceRoutes);
 app.use('/api/goals', goalsRoutes);
 app.use('/api/notifications', notificationsRoutes);

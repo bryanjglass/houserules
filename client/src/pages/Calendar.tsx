@@ -14,11 +14,13 @@ const STATUS_DOT: Record<string, string> = {
   PENDING: 'bg-amber-500',
   COMPLETED: 'bg-brand',
   APPROVED: 'bg-money-600',
-  REJECTED: 'bg-rose-500',
 };
 
+// Local date -> household-style day key "YYYY-MM-DD" (matches server event dates).
 function ymdKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${m}-${d}`;
 }
 
 export default function Calendar() {
@@ -36,22 +38,20 @@ export default function Calendar() {
     return Array.from({ length: 42 }, (_, i) => new Date(year, month, 1 - leading + i));
   }, [viewDate]);
 
-  // The visible range, keyed so each month's events are cached separately.
-  const startISO = cells[0].toISOString();
-  const lastCell = cells[cells.length - 1];
-  const endISO = new Date(
-    lastCell.getFullYear(), lastCell.getMonth(), lastCell.getDate(), 23, 59, 59, 999
-  ).toISOString();
+  // The visible range as day keys, keyed so each month's events are cached
+  // separately.
+  const startDay = ymdKey(cells[0]);
+  const endDay = ymdKey(cells[cells.length - 1]);
 
-  const calendarQuery = useCalendar(startISO, endISO);
+  const calendarQuery = useCalendar(startDay, endDay);
   const events: CalendarEvent[] = calendarQuery.data ?? [];
   const loading = calendarQuery.isPending;
 
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
     for (const ev of events) {
-      const key = ymdKey(new Date(ev.date));
-      (map[key] ||= []).push(ev);
+      // ev.date is already a day key — group by exact string match.
+      (map[ev.date] ||= []).push(ev);
     }
     return map;
   }, [events]);
@@ -137,11 +137,11 @@ export default function Calendar() {
                         <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[ev.status] || 'bg-ink-300'}`} />
                         <span className="truncate">{ev.title}</span>
                       </span>
-                      {isParent && ev.assignedTo && (
-                        <span className="block truncate opacity-70">{ev.assignedTo.name}</span>
+                      {isParent && ev.child && (
+                        <span className="block truncate opacity-70">{ev.child.name}</span>
                       )}
-                      {ev.dollarAmount ? (
-                        <span className="block text-money-600 font-bold">{formatCents(ev.dollarAmount)}</span>
+                      {ev.rewardCents ? (
+                        <span className="block text-money-600 font-bold">{formatCents(ev.rewardCents)}</span>
                       ) : null}
                     </div>
                   ))}

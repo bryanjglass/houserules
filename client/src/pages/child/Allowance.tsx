@@ -105,7 +105,7 @@ export default function ChildAllowance() {
                 <Thumb size={34} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold truncate">
-                    {tx.task?.title
+                    {tx.choreTitle
                       || (tx.goal?.title ? `Cashed in: ${tx.goal.title}` : null)
                       || tx.note
                       || (tx.type === 'ADJUSTMENT' ? 'Adjustment' : 'Earned')}

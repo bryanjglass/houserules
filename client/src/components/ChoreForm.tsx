@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCreateTask, useUpdateTask } from '../api/mutations';
+import { useCreateChore, useUpdateChore } from '../api/mutations';
 import { Avatar } from './Brand';
 import { ChevronLeftIcon, CalendarIcon } from './Icons';
-import { dollarsToCents, formatCents } from '../lib/money';
-import type { Recurrence } from '../types/domain';
-import type { Child, TaskView } from '../types/models';
+import { dollarsToCents } from '../lib/money';
+import type { ChoreKind, Recurrence } from '../types/domain';
+import type { Child, ChoreView } from '../types/models';
 
 // Per DESIGN.md §"Screen 3 — Create / Assign Task": title input, reward + due
 // date row, and switch-style toggles (on = bg-brand/bg-violet-600, off =
 // bg-ink-300) for up-for-grabs / recurring / catch-up. This component is the
-// single source for both the create and edit screens — a structural extraction
-// of the two previously-duplicated forms, using the existing tokens only.
+// single source for both the create and edit screens. The toggles choose the
+// chore's kind at create time; kind is immutable afterwards.
 
 const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = [
   { value: 'DAILY', label: 'Every day' },
@@ -32,17 +32,11 @@ function centsToInput(cents: number | null | undefined): string {
   return String(cents / 100);
 }
 
-// ISO timestamp -> yyyy-MM-dd for a <input type="date">.
-function isoToDateInput(iso: string | null | undefined): string {
-  if (!iso) return '';
-  return new Date(iso).toISOString().slice(0, 10);
-}
-
-interface TaskFormProps {
+interface ChoreFormProps {
   mode: 'create' | 'edit';
   children: Child[];
-  // Edit mode: the task being edited (initializes the fields).
-  initial?: TaskView;
+  // Edit mode: the chore being edited (initializes the fields).
+  initial?: ChoreView;
   // Create mode: preselected assignee (e.g. from ?childId=).
   defaultChildId?: string;
   // Optional override for navigation after a successful submit. When omitted,
@@ -50,43 +44,41 @@ interface TaskFormProps {
   onSubmitted?: () => void;
 }
 
-export default function TaskForm({ mode, children, initial, defaultChildId = '', onSubmitted }: TaskFormProps) {
+export default function ChoreForm({ mode, children, initial, defaultChildId = '', onSubmitted }: ChoreFormProps) {
   const navigate = useNavigate();
   const editing = mode === 'edit';
 
-  // Per-unit is chosen at create time and fixed thereafter; in edit mode it is
-  // read from the task and its reward/assignment are no longer changeable.
-  const [isPerUnit, setIsPerUnit] = useState(editing ? !!initial?.isPerUnit : false);
+  // Kind is chosen via the toggles at create time and fixed thereafter.
+  const [isPerUnit, setIsPerUnit] = useState(editing ? initial?.kind === 'PER_UNIT' : false);
+  const [isUpForGrabs, setIsUpForGrabs] = useState(editing ? initial?.kind === 'OPEN' : false);
 
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [dollarAmount, setDollarAmount] = useState(
     editing
-      ? centsToInput(initial?.isPerUnit ? initial?.unitReward : initial?.dollarAmount)
+      ? centsToInput(initial?.kind === 'PER_UNIT' ? initial?.unitRewardCents : initial?.rewardCents)
       : ''
   );
-  const [assignedToId, setAssignedToId] = useState(
+  const [assigneeId, setAssigneeId] = useState(
     editing
-      ? initial?.assignedToId ?? ''
+      ? initial?.assigneeId ?? ''
       : defaultChildId || (children.length === 1 ? children[0].id : '')
   );
-  const [isUpForGrabs, setIsUpForGrabs] = useState(editing ? !!initial?.isUpForGrabs : false);
-  const [dueDate, setDueDate] = useState(editing ? isoToDateInput(initial?.dueDate) : '');
-  const [isRecurring, setIsRecurring] = useState(editing ? !!initial?.isRecurring : false);
-  const [recurrence, setRecurrence] = useState<Recurrence>((initial?.recurrence as Recurrence) ?? 'WEEKLY');
+  // startDay is already a "YYYY-MM-DD" key — exactly what <input type="date"> wants.
+  const [startDay, setStartDay] = useState(editing ? initial?.startDay ?? '' : '');
+  const [isRecurring, setIsRecurring] = useState(editing ? !!initial?.recurrence : false);
+  const [recurrence, setRecurrence] = useState<Recurrence>(initial?.recurrence ?? 'WEEKLY');
   const [weeklyDays, setWeeklyDays] = useState<number[]>(
     initial?.weeklyDays ? initial.weeklyDays.split(',').map(Number).filter(n => Number.isInteger(n)) : []
   );
-  const [catchUp, setCatchUp] = useState(editing ? !!initial?.catchUp : false);
+  const [catchUp, setCatchUp] = useState(editing ? initial?.missedPolicy === 'BACKFILL_14D' : false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const createTask = useCreateTask();
-  const updateTask = useUpdateTask();
+  const createChore = useCreateChore();
+  const updateChore = useUpdateChore();
 
-  // Assignee/up-for-grabs are locked once the chore is per-unit or awaiting
-  // approval — reassigning mid-completion is out of scope (edit mode only).
-  const assigneeLocked = editing && (isPerUnit || initial?.status === 'COMPLETED');
+  const kind: ChoreKind = isPerUnit ? 'PER_UNIT' : isUpForGrabs ? 'OPEN' : 'ASSIGNED';
 
   const selectRecurrence = (value: Recurrence) => {
     setRecurrence(value);
@@ -100,60 +92,52 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
   const done = () => {
     if (onSubmitted) return onSubmitted();
     if (editing) return navigate(-1);
-    navigate(!isUpForGrabs && assignedToId ? `/children/${assignedToId}` : '/');
+    navigate(kind === 'ASSIGNED' && assigneeId ? `/children/${assigneeId}` : '/');
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     if (!title.trim()) { setError('Enter a title'); return; }
-    if (isPerUnit && !dollarAmount) { setError('Enter a per-item reward'); return; }
-    if (!editing && !isPerUnit && !isUpForGrabs && !assignedToId) { setError('Select a kid'); return; }
+    if (kind === 'PER_UNIT' && !dollarAmount) { setError('Enter a per-item reward'); return; }
+    if (kind === 'ASSIGNED' && !assigneeId) { setError('Select a kid'); return; }
     setLoading(true);
+    const cents = dollarAmount ? dollarsToCents(dollarAmount) : null;
+    const recurrenceFields = kind === 'PER_UNIT'
+      ? { recurrence: null, weeklyDays: [] }
+      : {
+          recurrence: isRecurring ? recurrence : null,
+          weeklyDays: isRecurring && recurrence === 'WEEKLY' ? weeklyDays : [],
+          missedPolicy:
+            kind === 'ASSIGNED' && isRecurring && catchUp ? 'BACKFILL_14D' : 'CURRENT_ONLY',
+        };
     try {
       if (editing) {
-        // Only the editable fields go up; per-unit reward and locked assignment stay put.
-        await updateTask.mutateAsync({
+        await updateChore.mutateAsync({
           id: initial!.id,
           body: {
             title,
             description: description || null,
-            ...(isPerUnit ? {} : { dollarAmount: dollarAmount ? dollarsToCents(dollarAmount) : null }),
-            ...(assigneeLocked ? {} : { assignedToId: isUpForGrabs ? undefined : assignedToId || undefined, isUpForGrabs }),
-            dueDate: dueDate || null,
-            ...(isPerUnit ? {} : {
-              isRecurring,
-              recurrence: isRecurring ? recurrence : null,
-              weeklyDays: isRecurring && recurrence === 'WEEKLY' ? weeklyDays : [],
-              catchUp: isRecurring && !isUpForGrabs && assignedToId ? catchUp : false,
-            }),
+            ...(kind === 'PER_UNIT' ? { unitRewardCents: cents } : { rewardCents: cents }),
+            ...(kind === 'ASSIGNED' && assigneeId ? { assigneeId } : {}),
+            startDay: startDay || null,
+            ...recurrenceFields,
           },
         });
-      } else if (isPerUnit) {
-        await createTask.mutateAsync({
-          title,
-          description: description || undefined,
-          isPerUnit: true,
-          unitReward: dollarsToCents(dollarAmount),
-          dueDate: dueDate || undefined,
-        });
       } else {
-        await createTask.mutateAsync({
+        await createChore.mutateAsync({
           title,
           description: description || undefined,
-          dollarAmount: dollarAmount ? dollarsToCents(dollarAmount) : undefined,
-          assignedToId: isUpForGrabs ? undefined : assignedToId,
-          isUpForGrabs,
-          dueDate: dueDate || undefined,
-          isRecurring,
-          recurrence: isRecurring ? recurrence : undefined,
-          weeklyDays: isRecurring && recurrence === 'WEEKLY' && weeklyDays.length ? weeklyDays : undefined,
-          catchUp: isRecurring && !isUpForGrabs && assignedToId ? catchUp : undefined,
+          kind,
+          ...(kind === 'PER_UNIT' ? { unitRewardCents: cents } : { rewardCents: cents }),
+          ...(kind === 'ASSIGNED' ? { assigneeId } : {}),
+          startDay: startDay || undefined,
+          ...recurrenceFields,
         });
       }
       done();
     } catch (err: any) {
-      setError(err.response?.data?.error || (editing ? 'Failed to save changes' : 'Failed to create task'));
+      setError(err.response?.data?.error || (editing ? 'Failed to save changes' : 'Failed to create chore'));
     } finally {
       setLoading(false);
     }
@@ -186,37 +170,30 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
           {/* Description */}
           <div>
             <label className="label">Description <span className="text-ink-400 font-medium">(optional)</span></label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="input resize-none" placeholder="Any extra details…" />
+            <textarea value={description ?? ''} onChange={e => setDescription(e.target.value)} rows={2} className="input resize-none" placeholder="Any extra details…" />
           </div>
 
           {/* Reward + Due Date */}
           <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="label">{isPerUnit ? 'Reward per item' : 'Reward'}</label>
-              {editing && isPerUnit ? (
-                <div className="flex items-center gap-2 border-[1.5px] border-line rounded-[14px] px-3 py-2.5 bg-appbg">
-                  <span className="w-[22px] h-[22px] rounded-full bg-money-50 text-money-700 grid place-items-center font-extrabold text-[12px] shrink-0">$</span>
-                  <span className="text-[14.5px] font-bold text-ink-500">{formatCents(initial?.unitReward)}/item</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 border-[1.5px] border-line rounded-[14px] px-3 py-2.5 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand-50 transition">
-                  <span className="w-[22px] h-[22px] rounded-full bg-money-50 text-money-700 grid place-items-center font-extrabold text-[12px] shrink-0">$</span>
-                  <input
-                    type="number" min="0" step="0.25" value={dollarAmount}
-                    onChange={e => setDollarAmount(e.target.value)}
-                    className="w-full outline-none text-[14.5px] font-bold text-ink-900 placeholder:text-ink-400 placeholder:font-normal"
-                    placeholder="0.00"
-                  />
-                </div>
-              )}
+              <label className="label">{kind === 'PER_UNIT' ? 'Reward per item' : 'Reward'}</label>
+              <div className="flex items-center gap-2 border-[1.5px] border-line rounded-[14px] px-3 py-2.5 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand-50 transition">
+                <span className="w-[22px] h-[22px] rounded-full bg-money-50 text-money-700 grid place-items-center font-extrabold text-[12px] shrink-0">$</span>
+                <input
+                  type="number" min="0" step="0.25" value={dollarAmount}
+                  onChange={e => setDollarAmount(e.target.value)}
+                  className="w-full outline-none text-[14.5px] font-bold text-ink-900 placeholder:text-ink-400 placeholder:font-normal"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <div>
               <label className="label">{isRecurring ? 'Starts on' : 'Due Date'} <span className="text-ink-400 font-medium">(optional)</span></label>
               <div className="flex items-center gap-2 border-[1.5px] border-line rounded-[14px] px-3 py-2.5 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand-50 transition">
                 <CalendarIcon size={16} className="text-brand shrink-0" />
                 <input
-                  type="date" value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
+                  type="date" value={startDay}
+                  onChange={e => setStartDay(e.target.value)}
                   className="w-full outline-none text-[13px] font-semibold text-ink-900 bg-transparent"
                 />
               </div>
@@ -246,13 +223,17 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
             </div>
           )}
 
-          {/* Per-unit chores can't be re-cadenced or reassigned in edit mode. */}
-          {editing && isPerUnit && (
-            <p className="text-[11.5px] text-ink-400">Per-item reward and assignment can't be changed after creation.</p>
+          {/* Kind is fixed after creation; say so instead of showing dead toggles. */}
+          {editing && kind !== 'ASSIGNED' && (
+            <p className="text-[11.5px] text-ink-400">
+              {kind === 'PER_UNIT'
+                ? 'This is a pay-per-item chore — that can’t be changed after creation.'
+                : 'This is an up-for-grabs chore — that can’t be changed after creation.'}
+            </p>
           )}
 
           {/* Up for grabs — any kid can claim it, first come first served */}
-          {!isPerUnit && !assigneeLocked && (
+          {!editing && !isPerUnit && (
             <div className="flex items-center gap-3 pt-1">
               <button
                 type="button"
@@ -270,25 +251,21 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
             </div>
           )}
 
-          {/* Assign To — hidden when the chore is up for grabs or pay-per-item */}
-          {!isPerUnit && !isUpForGrabs && (
+          {/* Assign To — only for assigned chores */}
+          {kind === 'ASSIGNED' && (
             <div>
               <label className="label">Assign To</label>
-              {assigneeLocked ? (
-                <p className="text-[13px] font-semibold text-ink-500">
-                  {initial?.assignedTo?.name ?? 'Assigned'} <span className="text-ink-400 font-medium">(can't reassign while awaiting approval)</span>
-                </p>
-              ) : children.length === 0 ? (
+              {children.length === 0 ? (
                 <p className="text-sm text-ink-400">No kids yet — add one first.</p>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
                   {children.map(c => {
-                    const on = assignedToId === c.id;
+                    const on = assigneeId === c.id;
                     return (
                       <button
                         key={c.id}
                         type="button"
-                        onClick={() => setAssignedToId(c.id)}
+                        onClick={() => setAssigneeId(c.id)}
                         className={`flex items-center gap-2 rounded-[14px] p-2.5 border-[1.5px] transition ${
                           on ? 'border-brand bg-brand-50' : 'border-line hover:border-brand-100'
                         }`}
@@ -304,7 +281,7 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
           )}
 
           {/* Recurring — not applicable to pay-per-item chores (inherently repeatable) */}
-          {!isPerUnit && (
+          {kind !== 'PER_UNIT' && (
             <div className="flex items-center gap-3 pt-1">
               <button
                 type="button"
@@ -319,7 +296,7 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
             </div>
           )}
 
-          {!isPerUnit && isRecurring && (
+          {kind !== 'PER_UNIT' && isRecurring && (
             <div className="grid grid-cols-3 gap-2">
               {RECURRENCE_OPTIONS.map(opt => {
                 const on = recurrence === opt.value;
@@ -339,7 +316,7 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
             </div>
           )}
 
-          {!isPerUnit && isRecurring && recurrence === 'WEEKLY' && (
+          {kind !== 'PER_UNIT' && isRecurring && recurrence === 'WEEKLY' && (
             <div>
               <label className="label">On these days <span className="text-ink-400 font-medium">(optional)</span></label>
               <div className="grid grid-cols-7 gap-1">
@@ -363,9 +340,9 @@ export default function TaskForm({ mode, children, initial, defaultChildId = '',
             </div>
           )}
 
-          {/* Catch-up — only for a recurring chore assigned to a specific kid.
-              Missed days pile up as separate tasks the kid can clear anytime. */}
-          {!isPerUnit && isRecurring && !isUpForGrabs && assignedToId && (
+          {/* Catch-up (BACKFILL_14D) — only for a recurring chore assigned to a
+              specific kid. Missed days surface as separate items to clear anytime. */}
+          {kind === 'ASSIGNED' && isRecurring && (
             <div className="flex items-center gap-3 pt-1">
               <button
                 type="button"
