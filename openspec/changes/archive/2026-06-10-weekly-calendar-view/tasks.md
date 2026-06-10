@@ -12,4 +12,4 @@
 ## 3. Verify
 
 - [x] 3.1 Run `npm run typecheck`
-- [ ] 3.2 Manually verify against the delta spec scenarios: opens on current week with today highlighted; prev/next/today navigation updates events; recurring projections appear on correct days within the week; parent vs child scoping unchanged; week ranges spanning month and year boundaries render correctly
+- [x] 3.2 Manually verify against the delta spec scenarios: opens on current week with today highlighted; prev/next/today navigation updates events; recurring projections appear on correct days within the week; parent vs child scoping unchanged; week ranges spanning month and year boundaries render correctly
