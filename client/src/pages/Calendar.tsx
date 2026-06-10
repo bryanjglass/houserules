@@ -4,11 +4,8 @@ import { useCalendar } from '../api/queries';
 import { formatCents } from '../lib/money';
 import type { CalendarEvent } from '../types/models';
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const STATUS_DOT: Record<string, string> = {
   PENDING: 'bg-amber-500',
@@ -23,25 +20,43 @@ function ymdKey(date: Date): string {
   return `${date.getFullYear()}-${m}-${d}`;
 }
 
+// Sunday of the week containing `date`, at local midnight.
+function startOfWeek(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
+}
+
+// "Jun 7 – 13, 2026"; spans months as "Jun 28 – Jul 4, 2026" and years as
+// "Dec 28, 2025 – Jan 3, 2027".
+function formatWeekRange(start: Date, end: Date): string {
+  if (start.getFullYear() !== end.getFullYear()) {
+    return `${MONTHS[start.getMonth()]} ${start.getDate()}, ${start.getFullYear()} – ${MONTHS[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  if (start.getMonth() !== end.getMonth()) {
+    return `${MONTHS[start.getMonth()]} ${start.getDate()} – ${MONTHS[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  return `${MONTHS[start.getMonth()]} ${start.getDate()} – ${end.getDate()}, ${end.getFullYear()}`;
+}
+
 export default function Calendar() {
   const { user } = useAuth();
   const isParent = user?.role === 'PARENT';
   const today = new Date();
 
-  const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(today));
 
-  // Build a stable 6-week (42-cell) grid covering the visible month.
-  const cells = useMemo(() => {
-    const year = viewDate.getFullYear();
-    const month = viewDate.getMonth();
-    const leading = new Date(year, month, 1).getDay();
-    return Array.from({ length: 42 }, (_, i) => new Date(year, month, 1 - leading + i));
-  }, [viewDate]);
+  const days = useMemo(
+    () =>
+      Array.from(
+        { length: 7 },
+        (_, i) => new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i),
+      ),
+    [weekStart],
+  );
 
-  // The visible range as day keys, keyed so each month's events are cached
+  // The visible range as day keys, keyed so each week's events are cached
   // separately.
-  const startDay = ymdKey(cells[0]);
-  const endDay = ymdKey(cells[cells.length - 1]);
+  const startDay = ymdKey(days[0]);
+  const endDay = ymdKey(days[6]);
 
   const calendarQuery = useCalendar(startDay, endDay);
   const events: CalendarEvent[] = calendarQuery.data ?? [];
@@ -56,25 +71,22 @@ export default function Calendar() {
     return map;
   }, [events]);
 
-  const goToMonth = (delta: number) =>
-    setViewDate(d => new Date(d.getFullYear(), d.getMonth() + delta, 1));
-  const goToToday = () =>
-    setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
-
-  const viewMonth = viewDate.getMonth();
+  const goToWeek = (delta: number) =>
+    setWeekStart(d => new Date(d.getFullYear(), d.getMonth(), d.getDate() + delta * 7));
+  const goToToday = () => setWeekStart(startOfWeek(new Date()));
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-        {/* Month navigation */}
+        {/* Week navigation */}
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-extrabold text-ink-900">
-            {MONTHS[viewMonth]} {viewDate.getFullYear()}
+            {formatWeekRange(days[0], days[6])}
           </h2>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => goToMonth(-1)}
+              onClick={() => goToWeek(-1)}
               className="w-9 h-9 rounded-[10px] bg-white border border-line text-ink-500 hover:bg-appbg transition"
-              aria-label="Previous month"
+              aria-label="Previous week"
             >
               ‹
             </button>
@@ -85,68 +97,66 @@ export default function Calendar() {
               Today
             </button>
             <button
-              onClick={() => goToMonth(1)}
+              onClick={() => goToWeek(1)}
               className="w-9 h-9 rounded-[10px] bg-white border border-line text-ink-500 hover:bg-appbg transition"
-              aria-label="Next month"
+              aria-label="Next week"
             >
               ›
             </button>
           </div>
         </div>
 
-        {/* Weekday header */}
-        <div className="grid grid-cols-7 gap-px text-center">
-          {WEEKDAYS.map(d => (
-            <div key={d} className="text-xs font-bold text-ink-400 py-1">{d}</div>
-          ))}
-        </div>
-
-        {/* Calendar grid */}
-        <div className="grid grid-cols-7 gap-px bg-line rounded-xl overflow-hidden border border-line">
-          {cells.map(cell => {
-            const inMonth = cell.getMonth() === viewMonth;
-            const isToday = ymdKey(cell) === ymdKey(today);
-            const dayEvents = eventsByDay[ymdKey(cell)] || [];
+        {/* Week agenda */}
+        <div className="space-y-2">
+          {days.map(day => {
+            const isToday = ymdKey(day) === ymdKey(today);
+            const dayEvents = eventsByDay[ymdKey(day)] || [];
             return (
-              <div
-                key={ymdKey(cell)}
-                className={`min-h-[5.5rem] p-1.5 ${inMonth ? 'bg-white' : 'bg-appbg'}`}
+              <section
+                key={ymdKey(day)}
+                className="bg-white border border-line rounded-xl p-3"
               >
-                <div className="flex justify-end">
+                <div className="flex items-center gap-2">
                   <span
-                    className={`text-xs w-5 h-5 flex items-center justify-center rounded-full ${
-                      isToday ? 'bg-brand text-white font-bold'
-                        : inMonth ? 'text-ink-700' : 'text-ink-300'
+                    className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${
+                      isToday ? 'bg-brand text-white' : 'text-ink-700'
                     }`}
                   >
-                    {cell.getDate()}
+                    {day.getDate()}
+                  </span>
+                  <span className={`text-sm font-bold ${isToday ? 'text-ink-900' : 'text-ink-500'}`}>
+                    {WEEKDAYS[day.getDay()]}
                   </span>
                 </div>
-                <div className="mt-1 space-y-1">
-                  {dayEvents.map(ev => (
-                    <div
-                      key={ev.id}
-                      title={`${ev.title}${ev.projected ? ' (upcoming)' : ''}`}
-                      className={`text-[10px] leading-tight px-1 py-0.5 rounded border truncate ${
-                        ev.projected
-                          ? 'border-dashed border-ink-300 bg-appbg text-ink-400'
-                          : 'border-brand-100 bg-brand-50 text-ink-900'
-                      }`}
-                    >
-                      <span className="flex items-center gap-1">
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[ev.status] || 'bg-ink-300'}`} />
-                        <span className="truncate">{ev.title}</span>
-                      </span>
-                      {isParent && ev.child && (
-                        <span className="block truncate opacity-70">{ev.child.name}</span>
-                      )}
-                      {ev.rewardCents ? (
-                        <span className="block text-money-600 font-bold">{formatCents(ev.rewardCents)}</span>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </div>
+                {dayEvents.length === 0 ? (
+                  <p className="mt-2 pl-9 text-xs text-ink-300">No tasks</p>
+                ) : (
+                  <div className="mt-2 space-y-1.5">
+                    {dayEvents.map(ev => (
+                      <div
+                        key={ev.id}
+                        title={`${ev.title}${ev.projected ? ' (upcoming)' : ''}`}
+                        className={`text-xs leading-tight px-2 py-1.5 rounded-lg border ${
+                          ev.projected
+                            ? 'border-dashed border-ink-300 bg-appbg text-ink-400'
+                            : 'border-brand-100 bg-brand-50 text-ink-900'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[ev.status] || 'bg-ink-300'}`} />
+                          <span className="truncate font-semibold">{ev.title}</span>
+                          {ev.rewardCents ? (
+                            <span className="ml-auto text-money-600 font-bold shrink-0">{formatCents(ev.rewardCents)}</span>
+                          ) : null}
+                        </span>
+                        {isParent && ev.child && (
+                          <span className="block truncate opacity-70 pl-3.5">{ev.child.name}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             );
           })}
         </div>
